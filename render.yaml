@@ -1,0 +1,19 @@
+# Render Blueprint. With this file in the repo root, Render configures the
+# service itself instead of you filling in the form by hand.
+services:
+  - type: web
+    name: tag-arena
+    runtime: node
+    plan: free
+    # No dependencies to install - the game is Node standard library only.
+    buildCommand: echo "nothing to build"
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Set this to your real Render URL after the first deploy so the
+      # downloadable tag.html points at the right place. The main link
+      # works without it.
+      # - key: PUBLIC_URL
+      #   value: https://tag-arena.onrender.com

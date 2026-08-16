@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Tag Arena</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#2bc4e8; --card:#ffffff; --card2:#eef4fa; --line:#cfe0ec;
+    --ink:#12303f; --dim:#628096; --accent:#00b4d8; --hot:#ff4d6d;
+    --radius:22px;
+    --font:"Baloo 2",Verdana,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(circle at 18% 12%, #7ee0f7 0 22%, transparent 22.5%),
+      radial-gradient(circle at 84% 78%, #6fd8ef 0 18%, transparent 18.5%);
+    color:var(--ink); font-family:var(--font);
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .screen{
+    position:fixed; inset:0; display:none; overflow-y:auto;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .screen.on{display:flex}
+  .card{
+    width:100%; max-width:440px; background:var(--card); border:4px solid #12303f;
+    border-radius:var(--radius); padding:26px; box-shadow:0 14px 0 -2px #12303f33, 0 30px 60px -24px #0006;
+  }
+  h1{
+    font-size:44px; font-weight:900; letter-spacing:-1px; text-align:center; margin-bottom:2px;
+    color:#ff3d68; text-shadow:3px 3px 0 #12303f;
+  }
+  .sub{text-align:center; color:var(--dim); font-size:13px; margin-bottom:22px}
+  label{display:block; font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); margin:16px 0 7px}
+  input,select{
+    width:100%; padding:13px 14px; font-size:16px; font-family:inherit; font-weight:600;
+    background:var(--card2); color:var(--ink); border:3px solid var(--line);
+    border-radius:14px; outline:none;
+  }
+  input:focus,select:focus{border-color:var(--accent)}
+  input::placeholder{color:#9ab0c0; font-weight:500}
+  button{
+    width:100%; padding:14px; font-size:17px; font-weight:800; font-family:inherit;
+    border:3px solid #12303f; border-radius:14px; cursor:pointer; color:#12303f;
+    background:#ffd23f; margin-top:16px; box-shadow:0 5px 0 #12303f;
+    transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;
+  }
+  button:active{transform:translateY(4px); box-shadow:0 1px 0 #12303f}
+  button:disabled{filter:grayscale(.7) brightness(.92); cursor:not-allowed}
+  button.ghost{background:#fff; color:var(--ink)}
+  button.hot{background:#ff5d7a; color:#fff}
+  .row{display:flex; gap:10px}
+  .row>*{flex:1}
+  .swatches{display:flex; flex-wrap:wrap; gap:9px}
+  .sw{
+    width:40px; height:40px; border-radius:50%; cursor:pointer; flex:0 0 auto;
+    border:3px solid #12303f; transition:transform .1s ease; box-shadow:0 3px 0 #12303f55;
+  }
+  .sw.sel{transform:scale(1.16); box-shadow:0 0 0 4px #ffd23f, 0 3px 0 #12303f55}
+  .themes{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:9px}
+  .th{
+    padding:9px; border-radius:14px; border:3px solid var(--line); cursor:pointer;
+    font-size:12px; font-weight:700; text-align:center; background:var(--card2);
+  }
+  .th.sel{border-color:#ffd23f; background:#fff8e0}
+  .th .chip{height:26px; border-radius:8px; margin-bottom:6px; border:2px solid #12303f}
+  .divider{display:flex; align-items:center; gap:12px; color:var(--dim); font-size:12px; margin:22px 0 4px}
+  .divider:before,.divider:after{content:""; flex:1; height:1px; background:var(--line)}
+  .code{
+    font-size:46px; font-weight:900; letter-spacing:12px; text-align:center;
+    padding:16px 0 16px 12px; background:#12303f; color:#ffd23f; border-radius:16px;
+    font-family:ui-monospace,Consolas,monospace;
+  }
+  .plist{list-style:none; margin-top:6px}
+  .plist li{
+    display:flex; align-items:center; gap:11px; padding:10px 12px; background:var(--card2);
+    border-radius:12px; margin-bottom:7px; font-size:15px; font-weight:600;
+    border:2px solid var(--line);
+  }
+  .dot{width:18px; height:18px; border-radius:50%; flex:0 0 auto; border:2px solid #12303f}
+  .tag{margin-left:auto; font-size:11px; font-weight:800; color:var(--dim); text-transform:uppercase; letter-spacing:.07em}
+  .tag.bot{color:#4cc9f0}
+  .botrow{display:flex; gap:8px}
+  .botrow button{flex:1; margin-top:0}
+  .note{font-size:12px; color:var(--dim); line-height:1.6; margin-top:14px}
+  .note b{color:var(--ink)}
+  .err{background:#3a1622; border:1px solid #7a2740; color:#ffc3ce; padding:11px 13px; border-radius:10px; font-size:13px; margin-top:14px; display:none}
+  .err.on{display:block}
+  details{margin-top:16px}
+  summary{font-size:12px; color:var(--dim); cursor:pointer}
+
+  /* game */
+  #game{display:none; position:fixed; inset:0}
+  #game.on{display:block}
+  canvas{display:block; width:100%; height:100%; touch-action:none}
+  .hud{position:fixed; inset:0; pointer-events:none; font-variant-numeric:tabular-nums}
+  .timer{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    font-size:36px; font-weight:900; color:#fff; padding:4px 26px; border-radius:99px;
+    background:#12303f; border:3px solid #ffffff44;
+  }
+  .timer.low{background:#c81e3acc; border-color:#ffffff77; animation:pulse .9s infinite}
+  .board{
+    position:absolute; top:12px; right:12px; background:#0009; border-radius:12px;
+    padding:9px 11px; font-size:13px; min-width:150px;
+  }
+  .board div{display:flex; align-items:center; gap:8px; padding:3px 0}
+  .board .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:88px}
+  .board .tm{margin-left:auto; color:var(--dim)}
+  .banner{
+    position:absolute; top:58px; left:50%; transform:translateX(-50%);
+    font-size:22px; font-weight:800; letter-spacing:.05em; padding:7px 20px;
+    border-radius:99px; background:#ff2d55; color:#fff; box-shadow:0 6px 30px #ff2d5566;
+    display:none; animation:pulse 1s infinite;
+  }
+  .banner.on{display:block}
+  @keyframes pulse{50%{transform:translateX(-50%) scale(1.06)}}
+  .hint{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    font-size:12px; color:#ffffff88; text-align:center;
+  }
+  .stick{position:absolute; display:none; width:132px; height:132px; border-radius:50%; border:2px solid #ffffff33; background:#ffffff12}
+  .stick i{position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px; border-radius:50%; background:#ffffff44; border:2px solid #ffffff66}
+  .stick.on{display:block}
+  .leave{position:absolute; top:12px; left:12px; pointer-events:auto; width:auto; margin:0; padding:8px 14px; font-size:13px; background:#0009; color:#fff; border:1px solid #ffffff2a}
+  .toast{
+    position:absolute; bottom:52px; left:50%; transform:translate(-50%,14px);
+    padding:10px 20px; border-radius:99px; color:#06210f; font-weight:800;
+    font-size:15px; letter-spacing:.04em; opacity:0; transition:opacity .18s ease, transform .18s ease;
+    box-shadow:0 8px 26px -8px #000a; white-space:nowrap;
+  }
+  .toast.on{opacity:1; transform:translate(-50%,0)}
+  .perf{
+    position:absolute; left:12px; bottom:10px; font-size:12px; color:#ffffffcc;
+    font-family:ui-monospace,Consolas,monospace; text-shadow:0 1px 3px #000a;
+  }
+  .count{
+    position:absolute; top:44%; left:50%; transform:translate(-50%,-50%) scale(.6);
+    font-size:150px; font-weight:900; color:#fff; opacity:0; pointer-events:none;
+    -webkit-text-stroke:9px #2b6fd6; paint-order:stroke fill;
+    transition:opacity .16s ease, transform .16s ease;
+  }
+  .count.on{opacity:1; transform:translate(-50%,-50%) scale(1)}
+  .crown{font-size:13px; font-weight:800; letter-spacing:.22em; color:#c9a227}
+  .wname{font-size:38px; font-weight:900; line-height:1.15; -webkit-text-stroke:2px #12303f; paint-order:stroke fill}
+  .wsub{font-size:13px; color:var(--dim); margin-top:2px}
+  .jump{
+    position:absolute; right:26px; bottom:34px; width:104px; height:104px;
+    border-radius:50%; display:none; pointer-events:auto; margin:0; font-size:16px;
+    background:#ffffff2e; border:3px solid #ffffff6b; color:#fff; box-shadow:none;
+  }
+  .jump:active{background:#ffffff55}
+  @media (max-width:520px){ h1{font-size:31px} .card{padding:20px} .code{font-size:36px; letter-spacing:9px} }
+</style>
+</head>
+<body>
+
+<!-- ------------------------------- MENU ------------------------------- -->
+<section id="menu" class="screen on">
+  <div class="card">
+    <h1>TAG ARENA</h1>
+    <div class="sub">Don't be it. Arrow keys to run.</div>
+
+    <label for="name">Your name</label>
+    <input id="name" maxlength="14" placeholder="Nickname or real name" autocomplete="off">
+
+    <label>Your colour</label>
+    <div class="swatches" id="swatches"></div>
+
+    <button id="btnCreate">Create a room</button>
+
+    <div class="divider">or join a friend</div>
+    <label for="code">Room code</label>
+    <div class="row">
+      <input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:6px;font-weight:700">
+      <button id="btnJoin" style="margin-top:0;flex:0 0 108px">Join</button>
+    </div>
+
+    <div class="err" id="menuErr"></div>
+
+    <details>
+      <summary>Connection settings</summary>
+      <label for="srv">Server address</label>
+      <input id="srv" placeholder="ws://192.168.0.5:3000" autocomplete="off">
+      <div class="note">Only change this if you cannot connect. Ask the host for the address shown in their server window.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ------------------------------- LOBBY ------------------------------ -->
+<section id="lobby" class="screen">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">Share this code</div>
+    <div class="code" id="lobbyCode">----</div>
+    <button class="ghost" id="btnCopy" style="margin-top:10px">Copy invite</button>
+
+    <label>Players <span id="pcount" style="color:var(--dim)"></span></label>
+    <ul class="plist" id="plist"></ul>
+
+    <div id="hostOnly">
+      <label>Arena theme</label>
+      <div class="themes" id="themes"></div>
+      <label for="dur">Round length</label>
+      <select id="dur">
+        <option value="60">1 minute</option>
+        <option value="120" selected>2 minutes</option>
+        <option value="180">3 minutes</option>
+      </select>
+
+      <label for="botDiff">Bots</label>
+      <select id="botDiff">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+      <div class="botrow">
+        <button class="ghost" id="btnAddBot">+ Add bot</button>
+        <button class="ghost" id="btnRemoveBot">- Remove bot</button>
+      </div>
+      <div class="note" id="botHint">Bots fill empty slots. One bot is enough to play on your own.</div>
+
+      <button id="btnStart">Start game</button>
+    </div>
+    <div id="guestOnly" class="note" style="text-align:center;margin-top:18px">Waiting for the host to start...</div>
+
+    <div class="err" id="lobbyErr"></div>
+    <div class="note" id="joinHint"></div>
+    <button class="ghost" id="btnLeave" style="margin-top:12px">Leave room</button>
+  </div>
+</section>
+
+<!-- ------------------------------- GAME ------------------------------- -->
+<div id="game">
+  <canvas id="cv"></canvas>
+  <div class="hud">
+    <div class="timer" id="timer">0:00</div>
+    <div class="board" id="board"></div>
+    <div class="banner" id="banner">YOU ARE IT</div>
+    <div class="hint" id="hint">Arrow keys / WASD to move</div>
+    <div class="stick" id="stick"><i id="stickNub"></i></div>
+    <div class="count" id="count">3</div>
+    <button class="jump" id="btnJump">JUMP</button>
+    <div class="toast" id="toast"></div>
+    <div class="perf" id="perf"></div>
+    <button class="leave" id="btnQuit">Leave</button>
+  </div>
+</div>
+
+<!-- ------------------------------ RESULTS ----------------------------- -->
+<section id="over" class="screen">
+  <div class="card">
+    <h1 style="font-size:30px">ROUND OVER</h1>
+    <div class="sub" id="winner"></div>
+    <ul class="plist" id="results"></ul>
+    <div class="note" style="text-align:center">Ranked by least time spent as IT.</div>
+    <button id="btnAgain">Back to lobby</button>
+    <div class="note" id="againHint" style="text-align:center"></div>
+  </div>
+</section>
+
+<script>
+"use strict";
+
+/* =============================== config =============================== */
+var BAKED_SERVER = "__SERVER_URL__";   /* filled in by the server when it hands out this file */
+
+function serverUrl(){
+  var custom = localStorage.getItem("tag_server");
+  if (custom) return custom;
+  if (BAKED_SERVER) return BAKED_SERVER;
+  return (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host;
+}
+
+/* physics constants - must match server.js */
+var W = 2400, H = 1400, R = 22;
+var ACCEL = 3400, AIR_ACCEL = 2100, MAX_SPEED = 400, IT_SPEED_BONUS = 1.10, HASTE_MUL = 1.45;
+var GROUND_DRAG = 9.0, AIR_DRAG = 1.3, GRAVITY = 2900, JUMP_V = 1180, MAX_FALL = 1700;
+var VIEW_H = 950;   /* how much of the level height fits on screen */
+
+var COLORS = ["#ff4d6d","#ffb703","#43e97b","#4cc9f0","#b57bff","#ff7b3d","#f7f7f7","#00d9a3"];
+
+/* side-view palettes: sky gradient, two parallax hill layers, platform colours */
+var THEMES = {
+  park:  {name:"Snow Peaks",  sky1:"#b4bbef", sky2:"#d8dcfa", far:"#a8afe8", near:"#979fe0",
+          cloud:"#eef0ff", plat:"#a9b2ea", platTop:"#ffffff", edge:"#8e97d8",
+          ink:"#2b2f5c", glow:"#ffffff", decor:"snow"},
+  beach: {name:"Sunset Bay",  sky1:"#ff9e6b", sky2:"#ffd9a8", far:"#e87a63", near:"#c95f57",
+          cloud:"#fff0dc", plat:"#e0a06a", platTop:"#ffd9a0", edge:"#b87c4e",
+          ink:"#5a2e1e", glow:"#fff3c4", decor:"palm"},
+  candy: {name:"Candy Clouds",sky1:"#ff9ad6", sky2:"#ffd3ec", far:"#f07cc0", near:"#d95fa8",
+          cloud:"#fff0fa", plat:"#f58ac8", platTop:"#ffe1f2", edge:"#c9569b",
+          ink:"#5c1f47", glow:"#fff0fa", decor:"candy"},
+  rink:  {name:"Frozen Lake", sky1:"#8ecbe8", sky2:"#cdeaf7", far:"#7fb6d8", near:"#6a9fc4",
+          cloud:"#f2fbff", plat:"#8fc4e2", platTop:"#ffffff", edge:"#6f9fbb",
+          ink:"#103448", glow:"#ffffff", decor:"snow"},
+  lava:  {name:"Ember Cave",  sky1:"#3a1410", sky2:"#7a2a18", far:"#4a1a12", near:"#33110c",
+          cloud:"#8a3a20", plat:"#8f3a20", platTop:"#ff8a4d", edge:"#5c2312",
+          ink:"#ffe0cf", glow:"#ff9d4d", decor:"lava"},
+  space: {name:"Star Station",sky1:"#080d28", sky2:"#1b2352", far:"#141b45", near:"#0d1234",
+          cloud:"#2a3470", plat:"#3b47a8", platTop:"#8fa0ff", edge:"#2a3480",
+          ink:"#e6ecff", glow:"#7cf5ff", decor:"stars"}
+};
+
+/* =============================== state ================================ */
+var ws = null, myId = null, myCode = "", isHost = false;
+var scene = "menu";
+var players = new Map();          /* id -> {id,name,color,x,y,rx,ry,freeze,itTime,dir} */
+var itId = null, cooldown = 0, timeLeft = 0, countdown = 0;
+var obstacles = [], pads = [], portals = [], theme = "park";
+var BOUNCE_V = 1750;   /* must match server */
+var myColor = COLORS[0];
+var particles = [];
+var keys = {u:false,d:false,l:false,r:false,j:false};
+var lastSent = "";
+var ping = 0, fps = 0, fpsFrames = 0, fpsSince = 0;
+var self = null;                   /* locally predicted copy of my player */
+var connectingAs = null;           /* "create" | "join" */
+
+var $ = function(id){ return document.getElementById(id); };
+
+/* =============================== screens ============================== */
+function show(name){
+  scene = name;
+  ["menu","lobby","over"].forEach(function(s){ $(s).classList.toggle("on", s === name); });
+  $("game").classList.toggle("on", name === "game");
+  if (name === "game") resize();
+}
+function err(el, msg){
+  var e = $(el);
+  e.textContent = msg;
+  e.classList.toggle("on", !!msg);
+}
+
+/* =============================== menu ui ============================== */
+(function buildMenu(){
+  var sw = $("swatches");
+  COLORS.forEach(function(c, i){
+    var d = document.createElement("div");
+    d.className = "sw" + (i === 0 ? " sel" : "");
+    d.style.background = c;
+    d.onclick = function(){
+      myColor = c;
+      localStorage.setItem("tag_color", c);
+      [].forEach.call(sw.children, function(x){ x.classList.remove("sel"); });
+      d.classList.add("sel");
+    };
+    sw.appendChild(d);
+  });
+
+  var savedName = localStorage.getItem("tag_name");
+  if (savedName) $("name").value = savedName;
+  var savedColor = localStorage.getItem("tag_color");
+  if (savedColor && COLORS.indexOf(savedColor) >= 0){
+    myColor = savedColor;
+    sw.children[COLORS.indexOf(savedColor)].click();
+  }
+  var savedSrv = localStorage.getItem("tag_server");
+  if (savedSrv) $("srv").value = savedSrv;
+
+  var t = $("themes");
+  Object.keys(THEMES).forEach(function(k, i){
+    var d = document.createElement("div");
+    d.className = "th" + (i === 0 ? " sel" : "");
+    d.innerHTML = '<div class="chip" style="background:linear-gradient(160deg,' + THEMES[k].sky1 + ' 40%,' + THEMES[k].near + ')"></div>' + THEMES[k].name;
+    d.onclick = function(){
+      theme = k;
+      [].forEach.call(t.children, function(x){ x.classList.remove("sel"); });
+      d.classList.add("sel");
+      if (isHost) send({t:"theme", theme:k, duration:Number($("dur").value)});
+    };
+    t.appendChild(d);
+  });
+
+  $("dur").onchange = function(){ if (isHost) send({t:"theme", theme:theme, duration:Number($("dur").value)}); };
+  $("code").oninput = function(){ this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); };
+  $("srv").onchange = function(){
+    var v = this.value.trim();
+    if (v) localStorage.setItem("tag_server", v); else localStorage.removeItem("tag_server");
+  };
+
+  $("btnCreate").onclick = function(){ go("create"); };
+  $("btnJoin").onclick = function(){
+    if (!$("code").value.trim()) { err("menuErr", "Type your friend's 4-letter room code first."); return; }
+    go("join");
+  };
+  $("code").onkeydown = function(e){ if (e.key === "Enter") $("btnJoin").click(); };
+  $("name").onkeydown = function(e){ if (e.key === "Enter") $("btnCreate").click(); };
+})();
+
+function myName(){
+  var n = $("name").value.trim() || "Player";
+  localStorage.setItem("tag_name", n);
+  return n;
+}
+
+/* =============================== network ============================== */
+function go(mode){
+  connectingAs = mode;
+  err("menuErr", "");
+  $("btnCreate").disabled = $("btnJoin").disabled = true;
+
+  var url = serverUrl();
+  try { ws = new WebSocket(url); }
+  catch (e) { failConnect(url); return; }
+
+  var settled = false;
+  var giveUp = setTimeout(function(){ if (!settled) { try{ws.close();}catch(e){} failConnect(url); } }, 8000);
+
+  ws.onopen = function(){
+    settled = true; clearTimeout(giveUp);
+    if (mode === "create") send({t:"create", name:myName(), color:myColor, theme:theme, duration:Number($("dur").value)});
+    else send({t:"join", code:$("code").value.trim().toUpperCase(), name:myName(), color:myColor});
+  };
+  ws.onmessage = function(ev){
+    var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    handle(m);
+  };
+  ws.onclose = function(){
+    clearTimeout(giveUp);
+    $("btnCreate").disabled = $("btnJoin").disabled = false;
+    if (!settled) { failConnect(url); return; }
+    if (scene !== "menu"){ show("menu"); err("menuErr", "Disconnected from the host."); }
+  };
+  ws.onerror = function(){ /* onclose handles it */ };
+}
+
+function failConnect(url){
+  $("btnCreate").disabled = $("btnJoin").disabled = false;
+  err("menuErr", "Could not reach the game server at " + url + ". Make sure the host's server is running and you are on the same Wi-Fi, then check Connection settings below.");
+  var d = document.querySelector("details"); if (d) d.open = true;
+}
+
+function send(o){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function handle(m){
+  switch (m.t){
+    case "you":
+      myId = m.id; myCode = m.code;
+      break;
+
+    case "err":
+      if (scene === "menu"){ err("menuErr", m.msg); try{ws.close();}catch(e){} }
+      else err("lobbyErr", m.msg);
+      break;
+
+    case "lobby": {
+      myCode = m.code; theme = m.theme; itId = null;
+      isHost = (m.hostId === myId);
+      players.clear();
+      m.players.forEach(function(p){ players.set(p.id, p); });
+      renderLobby(m);
+      if (scene !== "lobby") show("lobby");
+      break;
+    }
+
+    case "start": {
+      obstacles = m.obstacles; pads = m.pads || []; portals = m.portals || [];
+      theme = m.theme; itId = m.it; timeLeft = m.duration;
+      particles = [];
+      players.clear();
+      m.players.forEach(function(p){
+        players.set(p.id, {id:p.id, name:p.name, color:p.color, x:W/2, y:H/2, rx:W/2, ry:H/2, freeze:0, itTime:0, dir:0, seen:false, r:R, flags:0, vy:0});
+      });
+      self = null;
+      show("game");
+      break;
+    }
+
+    case "s": {
+      timeLeft = m.tl; itId = m.it; cooldown = m.cd;
+      m.p.forEach(function(a){
+        var p = players.get(a[0]);
+        if (!p) return;
+        var nx = a[1], ny = a[2];
+        /* derive horizontal speed from consecutive snapshots so we can
+           extrapolate remote players forward and hide the round-trip */
+        if (p.seen && p.lastSnap){
+          var sdt = (performance.now() - p.lastSnap) / 1000;
+          if (sdt > 0.005 && sdt < 0.5){
+            var ivx = (nx - p.x) / sdt;
+            p.evx = p.evx == null ? ivx : p.evx * 0.5 + ivx * 0.5;
+          }
+        }
+        p.lastSnap = performance.now();
+        p.x = nx; p.y = ny; p.freeze = a[3]; p.itTime = a[4];
+        p.r = a[5] || R; p.flags = a[6] || 0; p.vy = a[7] || 0;
+        if (!p.seen){ p.rx = p.x; p.ry = p.y; p.seen = true; p.evx = 0; }
+      });
+      countdown = m.cnt || 0;
+      if (m.ev) m.ev.forEach(function(e){
+        if (e.e === "tag"){
+          for (var i = 0; i < 26; i++){
+            var a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 260;
+            particles.push({x:e.x, y:e.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.7, max:0.7});
+          }
+          if (e.to === myId) navigator.vibrate && navigator.vibrate(70);
+        } else if (e.e === "bounce"){
+          for (var b = 0; b < 12; b++){
+            var ba = -Math.PI/2 + (Math.random()-0.5) * 1.5, bs = 120 + Math.random() * 200;
+            particles.push({x:e.x, y:e.y, vx:Math.cos(ba)*bs, vy:Math.sin(ba)*bs, life:0.5, max:0.5, c:"#ffd23f"});
+          }
+        } else if (e.e === "warp"){
+          for (var w2 = 0; w2 < 16; w2++){
+            var wa = Math.random() * Math.PI * 2, ws = 40 + Math.random() * 180;
+            particles.push({x:e.x, y:e.y, vx:Math.cos(wa)*ws, vy:Math.sin(wa)*ws, life:0.6, max:0.6, c:"#7cf5ff"});
+          }
+        }
+      });
+      /* correct local prediction toward the server's truth */
+      var mine = players.get(myId);
+      if (mine && self){
+        var dd = Math.hypot(mine.x - self.x, mine.y - self.y);
+        if (dd > 90 || mine.freeze){ self.x = mine.x; self.y = mine.y; self.vx = 0; self.vy = 0; }
+      } else if (mine && !self){
+        self = {x:mine.x, y:mine.y, vx:0, vy:0};
+      }
+      break;
+    }
+
+    case "cheatres":
+      toast(m.ok ? (m.code + " active" + (m.dur ? " - " + m.dur + "s" : "")) : (m.code + " - " + (m.why || "not now")), !!m.ok);
+      break;
+
+    case "cheatfx": {
+      var who = players.get(m.id);
+      if (who && who.seen){
+        for (var ci = 0; ci < 22; ci++){
+          var ca = Math.random() * Math.PI * 2, cs = 50 + Math.random() * 200;
+          particles.push({x:who.x, y:who.y, vx:Math.cos(ca)*cs, vy:Math.sin(ca)*cs, life:0.6, max:0.6});
+        }
+      }
+      break;
+    }
+
+    case "end":
+      renderResults(m);
+      show("over");
+      break;
+
+    case "pong":
+      if (m.ts) ping = Math.round(performance.now() - m.ts);
+      break;
+  }
+}
+
+/* =============================== lobby ui ============================= */
+function renderLobby(m){
+  $("lobbyCode").textContent = m.code;
+  $("pcount").textContent = "(" + m.players.length + "/8)";
+
+  var ul = $("plist"); ul.innerHTML = "";
+  m.players.forEach(function(p){
+    var li = document.createElement("li");
+    var dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = p.color;
+    var nm = document.createElement("span");
+    nm.textContent = p.name + (p.id === myId ? " (you)" : "");
+    li.appendChild(dot); li.appendChild(nm);
+    if (p.host || p.bot){
+      var t = document.createElement("span");
+      t.className = p.bot ? "tag bot" : "tag";
+      t.textContent = p.bot ? ("bot - " + (p.diff || "normal")) : "host";
+      li.appendChild(t);
+    }
+    ul.appendChild(li);
+  });
+
+  var bots = m.players.filter(function(p){ return p.bot; }).length;
+  $("hostOnly").style.display = isHost ? "block" : "none";
+  $("guestOnly").style.display = isHost ? "none" : "block";
+  $("btnStart").disabled = m.players.length < 2;
+  $("btnStart").textContent = m.players.length < 2 ? "Add a bot, or wait for a player..." : "Start game";
+  $("btnAddBot").disabled = m.players.length >= 8;
+  $("btnRemoveBot").disabled = bots === 0;
+  if (bots) $("botDiff").value = m.players.filter(function(p){ return p.bot; })[0].diff || "normal";
+  $("dur").value = String(m.duration);
+
+  var tk = Object.keys(THEMES).indexOf(m.theme);
+  var tel = $("themes");
+  [].forEach.call(tel.children, function(x, i){ x.classList.toggle("sel", i === tk); });
+  theme = m.theme;
+
+  $("joinHint").innerHTML = BAKED_SERVER
+    ? "Friends need <b>this same file</b> plus the code above."
+    : "Same Wi-Fi? Friends can open <b>" + location.origin + "</b> and type the code. Or send them the <b>tag.html</b> file from the server's share folder.";
+  err("lobbyErr", "");
+}
+
+$("btnCopy").onclick = function(){
+  var txt = BAKED_SERVER
+    ? "Open the tag.html file I sent you and join room code: " + myCode
+    : "Join my tag game: " + location.origin + "  -  room code: " + myCode;
+  var done = function(){ $("btnCopy").textContent = "Copied!"; setTimeout(function(){ $("btnCopy").textContent = "Copy invite"; }, 1400); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+  else { var i = document.createElement("textarea"); i.value = txt; document.body.appendChild(i); i.select(); try{document.execCommand("copy");}catch(e){} i.remove(); done(); }
+};
+$("btnAddBot").onclick = function(){ send({t:"addbot", diff: $("botDiff").value}); };
+$("btnRemoveBot").onclick = function(){ send({t:"removebot"}); };
+$("botDiff").onchange = function(){ send({t:"botdiff", diff: this.value}); };
+$("btnStart").onclick = function(){ send({t:"start"}); };
+$("btnLeave").onclick = function(){ try{ws.close();}catch(e){} show("menu"); };
+$("btnQuit").onclick = function(){ try{ws.close();}catch(e){} show("menu"); };
+$("btnAgain").onclick = function(){ if (isHost) send({t:"again"}); };
+
+function renderResults(m){
+  var ul = $("results"); ul.innerHTML = "";
+  m.results.forEach(function(p, i){
+    var li = document.createElement("li");
+    var pos = document.createElement("span");
+    pos.textContent = (i + 1) + ".";
+    pos.style.color = "var(--dim)"; pos.style.width = "20px";
+    var dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = p.color;
+    var nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = p.name + (p.id === myId ? " (you)" : "");
+    var tm = document.createElement("span");
+    tm.className = "tag"; tm.textContent = p.itTime.toFixed(1) + "s as it";
+    li.appendChild(pos); li.appendChild(dot); li.appendChild(nm); li.appendChild(tm);
+    ul.appendChild(li);
+  });
+  var win = m.results[0];
+  $("winner").innerHTML = win
+    ? '<div class="crown">WINNER</div><div class="wname" style="color:' + win.color + '">' +
+      escapeHtml(win.name) + '</div><div class="wsub">only ' + win.itTime.toFixed(1) + 's spent as IT</div>'
+    : "";
+  isHost = (m.hostId === myId);
+  $("btnAgain").style.display = isHost ? "block" : "none";
+  $("againHint").textContent = isHost ? "" : "Waiting for the host...";
+}
+
+/* =============================== input ================================ */
+var KEYMAP = {
+  ArrowUp:"j", ArrowDown:"d", ArrowLeft:"l", ArrowRight:"r", " ":"j",
+  w:"j", s:"d", a:"l", d:"r", W:"j", S:"d", A:"l", D:"r"
+};
+window.addEventListener("keydown", function(e){
+  var k = KEYMAP[e.key];
+  if (!k || scene !== "game") return;
+  e.preventDefault();
+  if (!keys[k]) { keys[k] = true; pushInput(); }
+});
+window.addEventListener("keyup", function(e){
+  var k = KEYMAP[e.key];
+  if (!k) return;
+  if (keys[k]) { keys[k] = false; pushInput(); }
+});
+
+/* Typed letters go to the server, which does the matching. No word list here. */
+window.addEventListener("keydown", function(e){
+  if (scene !== "game") return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.key && e.key.length === 1 && /[a-zA-Z]/.test(e.key)) send({t:"k", c:e.key.toUpperCase()});
+});
+
+function toast(msg, good){
+  var el = document.getElementById("toast");
+  el.textContent = msg;
+  el.style.background = good ? "#18c964" : "#ff4d6d";
+  el.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ el.classList.remove("on"); }, 2200);
+}
+window.addEventListener("blur", function(){
+  keys = {u:false,d:false,l:false,r:false,j:false};
+  if (scene === "game") pushInput();
+});
+
+function pushInput(){
+  var s = (keys.u?1:0) + "" + (keys.d?1:0) + (keys.l?1:0) + (keys.r?1:0) + (keys.j?1:0);
+  if (s === lastSent) return;
+  lastSent = s;
+  send({t:"input", u:keys.u, d:keys.d, l:keys.l, r:keys.r, j:keys.j});
+}
+setInterval(function(){ if (scene === "game"){ lastSent = ""; pushInput(); } }, 400);
+setInterval(function(){ if (scene === "game") send({t:"ping", ts:performance.now()}); }, 2000);
+
+/* touch joystick */
+(function touch(){
+  var stick = $("stick"), nub = $("stickNub"), id = null, ox = 0, oy = 0;
+  var cv = $("cv");
+  cv.addEventListener("touchstart", function(e){
+    if (id !== null) return;
+    var t = e.changedTouches[0];
+    id = t.identifier; ox = t.clientX; oy = t.clientY;
+    stick.style.left = (ox - 66) + "px";
+    stick.style.top = (oy - 66) + "px";
+    stick.classList.add("on");
+    nub.style.transform = "translate(0,0)";
+    e.preventDefault();
+  }, {passive:false});
+  cv.addEventListener("touchmove", function(e){
+    for (var i = 0; i < e.changedTouches.length; i++){
+      var t = e.changedTouches[i];
+      if (t.identifier !== id) continue;
+      var dx = t.clientX - ox, dy = t.clientY - oy;
+      var d = Math.hypot(dx, dy), max = 52;
+      if (d > max){ dx = dx / d * max; dy = dy / d * max; }
+      nub.style.transform = "translate(" + dx + "px," + dy + "px)";
+      var dz = 12;
+      keys.l = dx < -dz; keys.r = dx > dz;
+      keys.j = dy < -dz * 2;    /* flick up to jump */
+      keys.d = dy > dz * 2;     /* pull down to drop through a ledge */
+      pushInput();
+    }
+    e.preventDefault();
+  }, {passive:false});
+  var end = function(e){
+    for (var i = 0; i < e.changedTouches.length; i++){
+      if (e.changedTouches[i].identifier !== id) continue;
+      id = null; stick.classList.remove("on");
+      keys = {u:false,d:false,l:false,r:false,j:false};
+      pushInput();
+    }
+  };
+  cv.addEventListener("touchend", end);
+  cv.addEventListener("touchcancel", end);
+})();
+
+/* =============================== prediction =========================== */
+/* mirrors resolvePlatforms() + resolveGadgets() on the server */
+function collide(p, r){
+  p.grounded = false;
+  for (var i = 0; i < obstacles.length; i++){
+    var o = obstacles[i];
+    var cx = Math.max(o.x, Math.min(p.x, o.x + o.w));
+    var cy = Math.max(o.y, Math.min(p.y, o.y + o.h));
+    var dx = p.x - cx, dy = p.y - cy;
+    var d2 = dx * dx + dy * dy;
+    if (d2 >= r * r) continue;
+    if (d2 > 1e-6){
+      var d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      p.x += nx * (r - d); p.y += ny * (r - d);
+      var dot = p.vx * nx + p.vy * ny;
+      if (dot < 0){ p.vx -= dot * nx; p.vy -= dot * ny; }
+      if (ny < -0.5){ p.grounded = true; p.vy = Math.min(0, p.vy); }
+      if (ny > 0.5) p.vy = Math.max(0, p.vy);
+    } else {
+      var l = p.x - o.x, r2 = o.x + o.w - p.x, t = p.y - o.y, b = o.y + o.h - p.y;
+      var m = Math.min(l, r2, t, b);
+      if (m === l) { p.x = o.x - r; p.vx = Math.min(0, p.vx); }
+      else if (m === r2){ p.x = o.x + o.w + r; p.vx = Math.max(0, p.vx); }
+      else if (m === t) { p.y = o.y - r; p.vy = Math.min(0, p.vy); p.grounded = true; }
+      else              { p.y = o.y + o.h + r; p.vy = Math.max(0, p.vy); }
+    }
+  }
+  /* predict the bounce too, otherwise pads feel a whole ping late */
+  for (var j = 0; j < pads.length; j++){
+    var b2 = pads[j];
+    if (p.x + r < b2.x || p.x - r > b2.x + b2.w) continue;
+    var foot = p.y + r;
+    if (foot >= b2.y - 6 && foot <= b2.y + b2.h + 10 && p.vy >= -50){
+      p.y = b2.y - r; p.vy = -BOUNCE_V; p.grounded = false;
+    }
+  }
+}
+
+function predict(dt){
+  var mine = players.get(myId);
+  if (!mine) return;
+  if (!self){ self = {x:mine.x, y:mine.y, vx:0, vy:0}; return; }
+
+  if (mine.freeze){ self.x = mine.x; self.y = mine.y; self.vx = 0; self.vy = 0; return; }
+
+  var myR = mine.r || R;
+  var dir = (keys.r?1:0) - (keys.l?1:0);
+  if (mine.flags & 512) dir = -dir;        /* steering reversed by an effect */
+  var flying = (mine.flags & 1);
+
+  if (flying){
+    var uy = (keys.d?1:0) - (keys.j?1:0);
+    self.vx += dir * ACCEL * dt;
+    self.vy += uy * ACCEL * dt;
+    var fd = Math.exp(-4 * dt);
+    self.vx *= fd; self.vy *= fd;
+  } else {
+    var acc = self.grounded ? ACCEL : AIR_ACCEL;
+    self.vx += dir * acc * dt;
+    if (dir === 0) self.vx *= Math.exp(-(self.grounded ? GROUND_DRAG : AIR_DRAG) * dt);
+
+    self.coyote = self.grounded ? 0.10 : Math.max(0, (self.coyote || 0) - dt);
+    if (keys.j && !self.jHeld && self.coyote > 0){
+      self.vy = -JUMP_V; self.coyote = 0; self.grounded = false;
+    }
+    if (self.vy < 0 && !keys.j) self.vy *= Math.exp(-9 * dt);
+    var g = GRAVITY * ((mine.flags & 128) ? 0.45 : 1);      /* low-gravity effect */
+    self.vy = Math.min(self.vy + g * dt, MAX_FALL);
+    if ((mine.flags & 256) && self.vy > 190) self.vy = 190; /* slow-fall effect */
+  }
+  self.jHeld = keys.j;
+
+  var cap = MAX_SPEED * (myId === itId ? IT_SPEED_BONUS : 1) * ((mine.flags & 4) ? HASTE_MUL : 1);
+  if (self.vx > cap) self.vx = cap;
+  if (self.vx < -cap) self.vx = -cap;
+
+  self.x += self.vx * dt; self.y += self.vy * dt;
+
+  if (self.x < myR){ self.x = myR; self.vx = 0; }
+  if (self.x > W - myR){ self.x = W - myR; self.vx = 0; }
+  if (self.y < myR){ self.y = myR; self.vy = 0; }
+  if (flying){ self.grounded = false; if (self.y > H - myR){ self.y = H - myR; self.vy = 0; } }
+  else collide(self, myR);
+
+  /* ease toward the authoritative position so we never drift far */
+  self.x += (mine.x - self.x) * Math.min(1, dt * 9);
+  self.y += (mine.y - self.y) * Math.min(1, dt * 9);
+}
+
+/* =============================== render =============================== */
+var cv = $("cv"), ctx = cv.getContext("2d", {alpha:false});
+var view = {s:1, ox:0, oy:0, cw:0, ch:0};
+/* resolved once - reading computed styles per frame forces a style recalc */
+var NAME_FONT = '800 18px Verdana,system-ui,"Segoe UI",Roboto,sans-serif';
+var skyCache = null, skyCacheKey = "";
+
+/* The IT glow was a fresh radial gradient every frame for every chaser.
+   Bake it once into an offscreen canvas and just blit it instead. */
+var auraSprite = (function(){
+  var c = document.createElement("canvas");
+  c.width = c.height = 128;
+  var g = c.getContext("2d");
+  var rg = g.createRadialGradient(64, 64, 6, 64, 64, 64);
+  rg.addColorStop(0, "rgba(255,45,85,0.42)");
+  rg.addColorStop(0.6, "rgba(255,45,85,0.16)");
+  rg.addColorStop(1, "rgba(255,45,85,0)");
+  g.fillStyle = rg;
+  g.fillRect(0, 0, 128, 128);
+  return c;
+})();
+
+var cam = {x: W / 2, y: H / 2};
+
+function resize(){
+  /* a 2x buffer on a big screen means 4x the pixels to redraw every frame,
+     which is the difference between 60fps and a slideshow on laptop GPUs */
+  var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  var cw = window.innerWidth, ch = window.innerHeight;
+  if (cw * dpr > 2200) dpr = 2200 / cw;
+  cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  view.cw = cw; view.ch = ch;
+  skyCache = null;   /* size changed, rebuild the cached gradient */
+  view.s = ch / VIEW_H;                 /* fixed zoom, camera does the rest */
+  if (W * view.s < cw) view.s = cw / W; /* never show past the level sides */
+}
+
+/* keep the camera on the local player, clamped to the level */
+function updateCamera(dt){
+  var me = players.get(myId);
+  var tx = me && me.seen ? me.rx : W / 2;
+  var ty = me && me.seen ? me.ry : H / 2;
+  var halfW = view.cw / (2 * view.s), halfH = view.ch / (2 * view.s);
+  /* allow the camera past the level edge, otherwise a player pinned against a
+     wall slides to the screen edge instead of staying centred */
+  var overX = halfW * 0.6, overY = halfH * 0.5;
+  tx = Math.max(halfW - overX, Math.min(W - halfW + overX, tx));
+  ty = Math.max(halfH - overY, Math.min(H - halfH + overY, ty));
+  /* snap instead of gliding when the gap is huge (respawn, first frame) */
+  if (Math.hypot(tx - cam.x, ty - cam.y) > 600){ cam.x = tx; cam.y = ty; return; }
+  var k = Math.min(1, dt * 12);
+  cam.x += (tx - cam.x) * k;
+  cam.y += (ty - cam.y) * k;
+}
+window.addEventListener("resize", resize);
+resize();
+
+function roundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+var lastFrame = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt = Math.min(0.05, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (scene !== "game") return;
+
+  fpsFrames++;
+  if (now - fpsSince >= 500){ fps = Math.round(fpsFrames * 1000 / (now - fpsSince)); fpsFrames = 0; fpsSince = now; }
+
+  predict(dt);
+  updateCamera(dt);
+
+  /* Remote players arrive one round-trip stale. Project them forward by
+     roughly that much - horizontally at their measured speed, vertically
+     under gravity - so a 200ms ping does not look like a 200ms delay. */
+  var k = Math.min(1, dt * 22);
+  var lead = Math.max(0, Math.min(0.18, ping / 2000 + 0.03));
+  players.forEach(function(p){
+    if (p.id === myId && self){ p.rx = self.x; p.ry = self.y; return; }
+    var tx = p.x, ty = p.y;
+    if (!p.freeze){
+      tx += (p.evx || 0) * lead;
+      if (!(p.flags & 16)) ty += p.vy * lead + 0.5 * GRAVITY * lead * lead;
+    }
+    p.rx += (tx - p.rx) * k;
+    p.ry += (ty - p.ry) * k;
+  });
+
+  for (var i = particles.length - 1; i >= 0; i--){
+    var q = particles[i];
+    q.life -= dt;
+    if (q.life <= 0){ particles.splice(i, 1); continue; }
+    q.x += q.vx * dt; q.y += q.vy * dt;
+    q.vx *= 0.94; q.vy *= 0.94;
+  }
+
+  draw(now);
+  hud();
+}
+requestAnimationFrame(frame);
+
+/* rolling hill silhouette - same shape every frame, only the offset moves */
+function hills(baseY, amp, step, color, offset, cw, ch){
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(-100, ch + 50);
+  for (var x = -100; x <= cw + 100; x += step){
+    var t = (x + offset) / (step * 2.7);
+    var y = baseY - Math.abs(Math.sin(t)) * amp - Math.sin(t * 0.6) * amp * 0.25;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(cw + 100, ch + 50);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function draw(now){
+  var T = THEMES[theme] || THEMES.park;
+  var s = view.s, cw = view.cw, ch = view.ch;
+
+  /* sky - the gradient object only changes on resize or theme change */
+  if (!skyCache || skyCacheKey !== theme + ch){
+    skyCache = ctx.createLinearGradient(0, 0, 0, ch);
+    skyCache.addColorStop(0, T.sky1);
+    skyCache.addColorStop(1, T.sky2);
+    skyCacheKey = theme + ch;
+  }
+  ctx.fillStyle = skyCache;
+  ctx.fillRect(0, 0, cw, ch);
+
+  if (T.decor === "stars"){
+    ctx.fillStyle = "#ffffff";
+    for (var st = 0; st < 90; st++){
+      var sx = (st * 137.5 - cam.x * 0.12) % cw; if (sx < 0) sx += cw;
+      var sy = (st * 71.3) % (ch * 0.75);
+      ctx.globalAlpha = 0.3 + 0.6 * Math.abs(Math.sin(st + now / 900));
+      ctx.fillRect(sx, sy, 2.5, 2.5);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* parallax hills: far layer barely moves, near layer moves more */
+  var horizon = ch * 0.72 + (H / 2 - cam.y) * s * 0.25;
+  hills(horizon + 40, ch * 0.20, 90, T.far,  -cam.x * 0.18, cw, ch);
+  hills(horizon + 130, ch * 0.16, 70, T.near, -cam.x * 0.34, cw, ch);
+
+  /* clouds */
+  ctx.fillStyle = T.cloud;
+  ctx.globalAlpha = 0.85;
+  for (var c = 0; c < 7; c++){
+    var cxp = ((c * 520 - cam.x * 0.45) % (cw + 700)); if (cxp < -350) cxp += cw + 700;
+    var cyp = ch * 0.12 + (c % 3) * 90 + (H / 2 - cam.y) * s * 0.35;
+    puff(cxp, cyp, 70 + (c % 3) * 22);
+  }
+  ctx.globalAlpha = 1;
+
+  /* ---- world space ---- */
+  ctx.save();
+  ctx.translate(cw / 2 - cam.x * s, ch / 2 - cam.y * s);
+  ctx.scale(s, s);
+
+  obstacles.forEach(function(o){ drawPlatform(o, T); });
+  portals.forEach(function(g, i){ drawPortal(g, i, now, T); });
+  pads.forEach(function(b){ drawPad(b, now, T); });
+
+  particles.forEach(function(q){
+    ctx.globalAlpha = Math.max(0, q.life / q.max);
+    ctx.fillStyle = q.c || "#ff5577";
+    ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, 7); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  var list = [];
+  players.forEach(function(p){ list.push(p); });
+  list.sort(function(a, b){
+    var av = (a.id === itId ? 2 : 0) + (a.id === myId ? 1 : 0);
+    var bv = (b.id === itId ? 2 : 0) + (b.id === myId ? 1 : 0);
+    return av - bv;
+  });
+  list.forEach(function(p){ drawPlayer(p, now, T); });
+
+  ctx.restore();
+
+  offscreenArrows(T);
+}
+
+function puff(x, y, r){
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.6, 0, 7);
+  ctx.arc(x + r * 0.55, y + r * 0.12, r * 0.45, 0, 7);
+  ctx.arc(x - r * 0.55, y + r * 0.15, r * 0.4, 0, 7);
+  ctx.arc(x + r * 0.1, y - r * 0.3, r * 0.42, 0, 7);
+  ctx.fill();
+}
+
+function drawPlatform(o, T){
+  var cap = 9;
+  ctx.fillStyle = "#00000022";
+  roundRect(o.x + 5, o.y + 9, o.w, o.h, 8); ctx.fill();
+
+  ctx.fillStyle = T.plat;
+  roundRect(o.x, o.y, o.w, o.h, 8); ctx.fill();
+
+  /* snow / highlight cap along the top edge */
+  ctx.fillStyle = T.platTop;
+  roundRect(o.x + 1, o.y - 3, o.w - 2, cap + 3, 6); ctx.fill();
+
+  ctx.strokeStyle = T.edge; ctx.lineWidth = 2.5;
+  roundRect(o.x, o.y, o.w, o.h, 8); ctx.stroke();
+}
+
+function drawPad(b, now, T){
+  var squish = 1 + 0.12 * Math.sin(now / 160);
+  ctx.fillStyle = "#00000022";
+  roundRect(b.x + 4, b.y + 8, b.w, b.h, 7); ctx.fill();
+  /* base */
+  ctx.fillStyle = "#4a5170";
+  roundRect(b.x, b.y + b.h * 0.55, b.w, b.h * 0.6, 6); ctx.fill();
+  /* springy top */
+  var th = b.h * 0.62 * squish;
+  ctx.fillStyle = "#ffd23f";
+  roundRect(b.x - 3, b.y + b.h * 0.55 - th, b.w + 6, th, 7); ctx.fill();
+  ctx.strokeStyle = "#12303f"; ctx.lineWidth = 3;
+  roundRect(b.x - 3, b.y + b.h * 0.55 - th, b.w + 6, th, 7); ctx.stroke();
+  /* up chevrons */
+  ctx.strokeStyle = "#12303f"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  for (var i = 0; i < 2; i++){
+    var yy = b.y - 14 - i * 13 - (Math.sin(now / 220 + i) * 3);
+    ctx.beginPath();
+    ctx.moveTo(b.x + b.w * 0.28, yy + 8);
+    ctx.lineTo(b.x + b.w * 0.5,  yy);
+    ctx.lineTo(b.x + b.w * 0.72, yy + 8);
+    ctx.stroke();
+  }
+  ctx.lineCap = "butt";
+}
+
+function drawPortal(g, i, now, T){
+  var pair = Math.floor(i / 2);
+  var hue = pair === 0 ? "#7cf5ff" : "#ff7bd5";
+  var wob = 1 + 0.09 * Math.sin(now / 200 + i);
+  var rr = 44 * wob;
+
+  /* layered translucent ellipses instead of a per-frame gradient object */
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = hue;
+  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.72, rr, 0, 0, 7); ctx.fill();
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.5, rr * 0.78, 0, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = hue; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.55, rr * 0.85, 0, 0, 7); ctx.stroke();
+  ctx.strokeStyle = "#ffffffcc"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(g.x, g.y, rr * 0.33, rr * 0.6, Math.sin(now / 400 + i) * 0.5, 0, 7);
+  ctx.stroke();
+}
+
+/* little markers so you can tell where off-screen players are */
+function offscreenArrows(T){
+  var cw = view.cw, ch = view.ch, s = view.s;
+  players.forEach(function(p){
+    if (p.id === myId || !p.seen) return;
+    var sx = cw / 2 + (p.rx - cam.x) * s;
+    var sy = ch / 2 + (p.ry - cam.y) * s;
+    if (sx > 30 && sx < cw - 30 && sy > 30 && sy < ch - 30) return;
+    var mx = Math.max(26, Math.min(cw - 26, sx));
+    var my = Math.max(26, Math.min(ch - 26, sy));
+    ctx.fillStyle = p.id === itId ? "#ff2d55" : p.color;
+    ctx.strokeStyle = "#00000066"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(mx, my, 11, 0, 7); ctx.fill(); ctx.stroke();
+  });
+}
+
+function drawPlayer(p, now, T){
+  var isIt = (p.id === itId);
+  var x = p.rx, y = p.ry;
+  var r = p.r || R;
+  var ghost = (p.flags & 1), immune = (p.flags & 2), turbo = (p.flags & 4), party = (p.flags & 8);
+  var fog = (p.flags & 64), moon = (p.flags & 128), bubble = (p.flags & 256), mirror = (p.flags & 512);
+
+  var body = p.color;
+  if (party) body = "hsl(" + Math.floor(now / 4 % 360) + ",95%,62%)";
+
+  /* chase aura */
+  if (isIt){
+    var pulse = 1 + 0.14 * Math.sin(now / 150);
+    var ar = r * 3.4 * pulse;
+    ctx.drawImage(auraSprite, x - ar, y - ar, ar * 2, ar * 2);
+  }
+
+  /* speed streaks trailing the direction of travel */
+  if (turbo){
+    var tvx = p.x - p.rx, tvy = p.y - p.ry;
+    if (p.id === myId && self){ tvx = self.vx; tvy = self.vy; }
+    var tm = Math.hypot(tvx, tvy);
+    if (tm > 1){
+      ctx.strokeStyle = "#ffffff88"; ctx.lineWidth = 4; ctx.lineCap = "round";
+      for (var s = 1; s <= 3; s++){
+        ctx.globalAlpha = 0.5 / s;
+        ctx.beginPath();
+        ctx.moveTo(x - tvx / tm * (r + s * 9), y - tvy / tm * (r + s * 9));
+        ctx.lineTo(x - tvx / tm * (r + s * 9 + 12), y - tvy / tm * (r + s * 9 + 12));
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1; ctx.lineCap = "butt";
+    }
+  }
+
+  ctx.save();
+  if (ghost) ctx.globalAlpha = 0.42;
+  /* concealment effect: barely visible to others, dimmed for yourself */
+  if (fog) ctx.globalAlpha = (p.id === myId ? 0.5 : 0.12);
+
+  /* squash when landing, stretch when rising */
+  var vy = p.vy || 0;
+  var sx = 1, sy = 1;
+  if (!(p.flags & 16)){
+    var st = Math.max(-1, Math.min(1, vy / 900));
+    sy = 1 + st * 0.16; sx = 1 - st * 0.13;
+  }
+
+  ctx.fillStyle = "#00000030";
+  ctx.beginPath(); ctx.ellipse(x, y + r * 0.98, r * 0.9, r * 0.3, 0, 0, 7); ctx.fill();
+
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(sx, sy); ctx.translate(-x, -y);
+
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = isIt ? "#e01742" : (T.outline || "#1b1b2a");
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+
+  if (p.id === myId){
+    ctx.strokeStyle = "#ffffffee"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, r + 7, 0, 7); ctx.stroke();
+  }
+
+  /* headband, tied on the trailing side */
+  var faceDir = (p.flags & 32) ? -1 : 1;
+  ctx.fillStyle = isIt ? "#e01742" : "#2b2f5c";
+  ctx.beginPath();
+  ctx.rect(x - r, y - r * 0.42, r * 2, r * 0.34);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - faceDir * r * 0.9, y - r * 0.3);
+  ctx.lineTo(x - faceDir * (r * 1.5), y - r * 0.62);
+  ctx.lineTo(x - faceDir * (r * 1.45), y - r * 0.05);
+  ctx.closePath(); ctx.fill();
+
+  /* eyes toward the way you are running */
+  var eo = r * 0.30, er = r * 0.26, pr = r * 0.14;
+  var ex = x + faceDir * r * 0.16;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(ex - eo, y + r * 0.05, er, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex + eo, y + r * 0.05, er, 0, 7); ctx.fill();
+  ctx.fillStyle = "#15151f";
+  ctx.beginPath(); ctx.arc(ex - eo + faceDir * 2.5, y + r * 0.05, pr, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex + eo + faceDir * 2.5, y + r * 0.05, pr, 0, 7); ctx.fill();
+
+  ctx.restore();   /* squash */
+  ctx.restore();   /* ghost alpha */
+
+  if (immune){
+    ctx.strokeStyle = "#7cf5ff"; ctx.lineWidth = 4;
+    ctx.globalAlpha = 0.5 + 0.4 * Math.sin(now / 120);
+    ctx.beginPath(); ctx.arc(x, y, r + 12, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  if (bubble){
+    ctx.strokeStyle = "#bfefff"; ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.arc(x, y - r * 0.1, r + 16, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 0.16; ctx.fillStyle = "#dff6ff";
+    ctx.beginPath(); ctx.arc(x, y - r * 0.1, r + 16, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  if (moon){
+    ctx.fillStyle = "#fff3a8"; ctx.globalAlpha = 0.85;
+    for (var mi = 0; mi < 3; mi++){
+      var ma = now / 300 + mi * 2.1;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(ma) * (r + 15), y + Math.sin(ma) * (r + 15), 3.2, 0, 7);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  if (mirror){
+    ctx.strokeStyle = "#ff7bd5"; ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.5 + 0.4 * Math.sin(now / 90);
+    ctx.beginPath(); ctx.arc(x, y, r + 7, 0.6, 2.5); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r + 7, 3.8, 5.7); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  if (p.freeze){
+    ctx.strokeStyle = "#ffffffcc"; ctx.lineWidth = 4;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath(); ctx.arc(x, y, r + 11, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* name plate */
+  ctx.font = NAME_FONT;
+  ctx.textAlign = "center";
+  ctx.lineWidth = 5; ctx.strokeStyle = "#00000099";
+  var label = p.name + (isIt ? "  IT" : "");
+  ctx.strokeText(label, x, y - r - 14);
+  ctx.fillStyle = isIt ? "#ffd0da" : "#ffffff";
+  ctx.fillText(label, x, y - r - 14);
+}
+
+function hud(){
+  var t = Math.max(0, timeLeft);
+  $("timer").textContent = Math.floor(t / 60) + ":" + ("0" + Math.floor(t % 60)).slice(-2);
+  $("timer").classList.toggle("low", t <= 10 && countdown <= 0);
+
+  var cd = $("count");
+  if (countdown > 0){ cd.textContent = countdown; cd.classList.add("on"); }
+  else if (cd.classList.contains("on")){
+    cd.textContent = "GO!";
+    setTimeout(function(){ cd.classList.remove("on"); }, 550);
+  }
+
+  var amIt = (myId === itId);
+  $("banner").classList.toggle("on", amIt && countdown <= 0);
+  $("banner").textContent = cooldown && amIt ? "YOU ARE IT - GO!" : "YOU ARE IT";
+
+  /* the scoreboard is DOM - rebuilding it every frame is what was stuttering */
+  if (performance.now() - hud._last < 250) return;
+  hud._last = performance.now();
+
+  $("perf").textContent = fps + " fps   " + ping + " ms" +
+    (BAKED_SERVER || location.hostname !== "localhost" ? "" : "   local");
+
+  var rows = [];
+  players.forEach(function(p){ rows.push(p); });
+  rows.sort(function(a, b){ return a.itTime - b.itTime; });
+  var html = "";
+  rows.forEach(function(p){
+    html += '<div><span class="dot" style="background:' + p.color + '"></span>' +
+            '<span class="nm">' + escapeHtml(p.name) + '</span>' +
+            '<span class="tm">' + p.itTime.toFixed(1) + 's</span></div>';
+  });
+  $("board").innerHTML = html;
+}
+hud._last = 0;
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* touch devices get a jump button and a different hint */
+if ("ontouchstart" in window){
+  $("hint").textContent = "Drag to run, tap JUMP to jump";
+  $("btnJump").style.display = "block";
+  var jb = $("btnJump");
+  var jStart = function(e){ e.preventDefault(); if (!keys.j){ keys.j = true; pushInput(); } };
+  var jEnd = function(e){ e.preventDefault(); if (keys.j){ keys.j = false; pushInput(); } };
+  jb.addEventListener("touchstart", jStart, {passive:false});
+  jb.addEventListener("touchend", jEnd, {passive:false});
+  jb.addEventListener("touchcancel", jEnd, {passive:false});
+} else {
+  $("hint").textContent = "Arrows / WASD to run  -  Up or Space to jump  -  Down to drop through";
+}
+</script>
+</body>
+</html>

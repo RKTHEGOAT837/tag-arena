@@ -1,0 +1,13 @@
+{
+  "name": "tag-arena",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time multiplayer tag game with bots. No dependencies - Node standard library only.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
