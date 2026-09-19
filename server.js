@@ -155,6 +155,32 @@ const BOUNCE_V = 1750;         // ~530px of air, more than double a normal jump
 const PORTAL_R = 46;
 const PORTAL_CD = 1.0;         // stops instant ping-ponging between a pair
 
+/* Portals are not part of the map any more. A pair tears open somewhere
+   random, works for a few seconds, then collapses - so no escape route is
+   ever permanent and nobody can camp one. */
+const PORTAL_PAIRS_MAX = 2;
+const PORTAL_WARM = 0.9;                   // swirling open, not usable yet
+const PORTAL_LIFE_MIN = 9, PORTAL_LIFE_MAX = 16;
+const PORTAL_FADE = 1.0;                   // collapsing, not usable any more
+const PORTAL_GAP_MIN = 2.5, PORTAL_GAP_MAX = 6.0;
+const PORTAL_MIN_SEP = 620;                // a pair has to be a real shortcut
+const SPOT_LIFT = 74;                      // how high above a ledge things float
+
+/* Pickups drop in at random too, and are gone the moment somebody runs
+   through them. */
+const PICKUP_R = 30;
+const PICKUP_WARM = 0.35;
+const PICKUP_MAX = 3;
+const PICKUP_GAP_MIN = 3.5, PICKUP_GAP_MAX = 7.5;
+const PICKUP_KINDS = ['boost', 'feather', 'shield', 'swap'];
+const PICKUP_BAG = ['boost','boost','boost','feather','feather','shield','shield','swap'];
+const BOOST_DUR = 6, FEATHER_DUR = 8, SHIELD_DUR = 4;
+
+/* The last stretch of a round: whoever is IT gets faster, because being
+   stuck as IT on the final whistle is what loses it for you. */
+const PANIC_SECONDS = 20;
+const PANIC_BONUS = 1.24;
+
 /* Platforms are thin ledges you land on from above and can jump up through.
    `solid:true` blocks from every side (the ground, and the level's end walls). */
 /* Every platform is solid now - you bonk your head instead of passing through.
@@ -187,10 +213,6 @@ const LEVELS = [
       { x: 20,   y: 1300, w: 80, h: 30 },
       { x: 2300, y: 1300, w: 80, h: 30 },
     ],
-    portals: [
-      { x: 130,  y: 1085 }, { x: 2280, y: 365 },
-      { x: 2270, y: 1275 }, { x: 250,  y: 370 },
-    ],
   },
   {
     plats: [
@@ -215,9 +237,37 @@ const LEVELS = [
       { x: 20,   y: 1300, w: 80, h: 30 },
       { x: 2300, y: 1300, w: 80, h: 30 },
     ],
-    portals: [
-      { x: 180,  y: 1275 }, { x: 2220, y: 1275 },
-      { x: 60,   y: 445  }, { x: 2340, y: 445  },
+  },
+  /* The pyramid. A stepped middle with a clear chimney straight up its
+     centre - the middle pad fires you through it, and you have to steer
+     onto a step on the way down or ride it all the way back to the floor. */
+  {
+    plats: [
+      { x: 0, y: 1330, w: 2400, h: 70 },
+      { x: 520,  y: 1170, w: 480, h: PLAT_H },
+      { x: 1400, y: 1170, w: 480, h: PLAT_H },
+      { x: 700,  y: 1000, w: 420, h: PLAT_H },
+      { x: 1280, y: 1000, w: 420, h: PLAT_H },
+      { x: 860,  y: 830,  w: 280, h: PLAT_H },
+      { x: 1260, y: 830,  w: 280, h: PLAT_H },
+      { x: 940,  y: 660,  w: 200, h: PLAT_H },
+      { x: 1260, y: 660,  w: 200, h: PLAT_H },
+      { x: 1080, y: 470,  w: 240, h: PLAT_H },   // summit, caps the chimney
+      { x: 140,  y: 1120, w: 280, h: PLAT_H },
+      { x: 120,  y: 880,  w: 300, h: PLAT_H },
+      { x: 180,  y: 640,  w: 280, h: PLAT_H },
+      { x: 120,  y: 400,  w: 300, h: PLAT_H },
+      { x: 1980, y: 1120, w: 280, h: PLAT_H },
+      { x: 1980, y: 880,  w: 300, h: PLAT_H },
+      { x: 1940, y: 640,  w: 280, h: PLAT_H },
+      { x: 1980, y: 400,  w: 300, h: PLAT_H },
+      { x: 560,  y: 560,  w: 300, h: PLAT_H },
+      { x: 1540, y: 560,  w: 300, h: PLAT_H },
+    ],
+    pads: [
+      { x: 20,   y: 1300, w: 80, h: 30 },
+      { x: 2300, y: 1300, w: 80, h: 30 },
+      { x: 1160, y: 1300, w: 80, h: 30 },       // the chimney launcher
     ],
   },
 ];
@@ -230,9 +280,9 @@ const SPAWNS = [
 const THEMES = ['park', 'beach', 'candy', 'rink', 'lava', 'space'];
 
 /* Cheat codes. dur = how long the effect lasts, cd = cooldown before reuse.
-   Deliberately not advertised anywhere in the UI. */
-/* No cooldowns - every code is reusable the instant you retype it.
-   `dur` is just how long the effect lasts once triggered. */
+   No cooldowns - a code works again the instant you retype it. You can type
+   them mid-round or pick them off the in-game cheat menu; the menu is built
+   from CHEAT_DEFS below and sent to clients, so the two cannot drift apart. */
 const CHEATS = {
   TURBO:    { dur: 15, cd: 0 },
   NOCLIP:   { dur: 10, cd: 0 },
@@ -252,7 +302,37 @@ const CHEATS = {
   TETHER:   { dur: 0,  cd: 0 },   // IT only: yank the nearest player in
   MIRROR:   { dur: 4,  cd: 0 },   // IT only: reverse everyone else's steering
   MERCY:    { dur: 0,  cd: 0 },   // wipe 5s off your own IT time
+  /* --- tied to the roaming portals and pickups --- */
+  PORTAL:   { dur: 0,  cd: 0 },   // tear open a fresh pair on demand
+  RAIN:     { dur: 0,  cd: 0 },   // dump three pickups onto the map
+  SHUFFLE:  { dur: 0,  cd: 0 },   // everyone swaps places at once
 };
+
+/* What the cheat menu shows. `it` marks the ones only the chaser may use. */
+const CHEAT_DEFS = [
+  { code: 'TURBO',    grp: 'Speed',  desc: 'Sprint 45% faster.' },
+  { code: 'MINI',     grp: 'Body',   desc: 'Shrink. A much smaller target.' },
+  { code: 'BIGFOOT',  grp: 'Body',   desc: 'Grow huge. Long reach, easy to hit.' },
+  { code: 'PARTY',    grp: 'Body',   desc: 'Rainbow body. Pure showing off.' },
+  { code: 'MOONBOOT', grp: 'Air',    desc: 'Low gravity. Enormous floaty jumps.' },
+  { code: 'BUBBLE',   grp: 'Air',    desc: 'Drift down slowly like a balloon.' },
+  { code: 'NOCLIP',   grp: 'Air',    desc: 'Fly anywhere. Walls stop mattering.' },
+  { code: 'ROCKET',   grp: 'Air',    desc: 'Blast straight up, right now.' },
+  { code: 'BRICK',    grp: 'Air',    desc: 'Slam straight down, right now.' },
+  { code: 'BLINK',    grp: 'Air',    desc: 'Teleport a short dash ahead.' },
+  { code: 'IMMUNE',   grp: 'Escape', desc: 'Cannot be tagged at all.' },
+  { code: 'FOG',      grp: 'Escape', desc: 'Go nearly invisible to everyone else.' },
+  { code: 'MERCY',    grp: 'Escape', desc: 'Wipe 5 seconds off your own IT time.' },
+  { code: 'FLIP',     grp: 'Chaos',  desc: 'Swap places with a random player.' },
+  { code: 'SHUFFLE',  grp: 'Chaos',  desc: 'Teleport everyone somewhere new at once.' },
+  { code: 'PORTAL',   grp: 'Chaos',  desc: 'Tear open a fresh pair of portals.' },
+  { code: 'RAIN',     grp: 'Chaos',  desc: 'Drop three pickups onto the map.' },
+  { code: 'FREEZE',   grp: 'Chaser', desc: 'Freeze everyone else where they stand.', it: true },
+  { code: 'TETHER',   grp: 'Chaser', desc: 'Yank the nearest runner towards you.', it: true },
+  { code: 'MIRROR',   grp: 'Chaser', desc: "Reverse everyone else's steering.", it: true },
+];
+const CHEAT_INFO = CHEAT_DEFS.map(c => ({ ...c, dur: CHEATS[c.code].dur }));
+const CHEAT_IT = new Set(CHEAT_DEFS.filter(c => c.it).map(c => c.code));
 const TURBO_MUL = 1.45, MINI_MUL = 0.6, BIG_MUL = 1.6;
 const BLINK_DIST = 230, FREEZE_OTHERS = 2.5;
 const MOON_G = 0.45;           // gravity multiplier under MOONBOOT
@@ -306,6 +386,17 @@ function createRoom(theme, duration) {
     obstacles: [],
     pads: [],
     portals: [],
+    pickups: [],
+    spots: [],               // where portals and pickups are allowed to appear
+    gadgetSeq: 1,
+    hueSeq: 0,
+    portalWait: 0,
+    pickupWait: 0,
+    portalDirty: false,      // set when the wire copy needs resending
+    pickupDirty: false,
+    panic: false,            // final stretch: IT speeds up
+    cheatsOn: true,
+    level: 0,
     timeLeft: 0,
     itId: null,
     cooldown: 0,
@@ -348,6 +439,7 @@ function sendLobby(room) {
   broadcast(room, {
     t: 'lobby', code: room.code, players: playerList(room),
     theme: room.theme, duration: room.duration, hostId: room.hostId, state: room.state,
+    cheats: room.cheatsOn, cheatList: CHEAT_INFO,
   });
 }
 
@@ -388,7 +480,7 @@ function resolvePlatforms(p, plats) {
   }
 }
 
-/* jump pads and portals, checked after the player has been moved */
+/* jump pads, pickups and portals, checked after the player has been moved */
 function resolveGadgets(room, p) {
   for (const b of room.pads) {
     if (p.x + p.r < b.x || p.x - p.r > b.x + b.w) continue;
@@ -401,12 +493,22 @@ function resolveGadgets(room, p) {
     }
   }
 
+  /* pickups vanish for everyone the instant one player runs through them */
+  for (let i = room.pickups.length - 1; i >= 0; i--) {
+    const k = room.pickups[i];
+    if (k.age < PICKUP_WARM) continue;
+    if (Math.hypot(p.x - k.x, p.y - k.y) > p.r + PICKUP_R) continue;
+    room.pickups.splice(i, 1);
+    room.pickupDirty = true;
+    applyPickup(room, p, k.kind);
+  }
+
   p.portalCd = Math.max(0, p.portalCd - TICK);
   if (p.portalCd > 0) return;
-  for (let i = 0; i < room.portals.length; i++) {
-    const g = room.portals[i];
+  for (const g of room.portals) {
+    if (g.age < PORTAL_WARM || g.age > g.life) continue;   // still opening, or collapsing
     if (Math.hypot(p.x - g.x, p.y - g.y) > PORTAL_R) continue;
-    const partner = room.portals[i % 2 === 0 ? i + 1 : i - 1];
+    const partner = room.portals.find(o => o.pair === g.pair && o !== g);
     if (!partner) break;
     room.events.push({ e: 'warp', x: p.x, y: p.y });
     p.x = partner.x; p.y = partner.y;
@@ -422,7 +524,7 @@ function updateEffects(p, dt) {
   p.r = R * (p.fx.mini > 0 ? MINI_MUL : p.fx.big > 0 ? BIG_MUL : 1);
 }
 
-function stepPlayer(p, dt, isIt, plats) {
+function stepPlayer(p, dt, isIt, plats, panic) {
   if (p.freeze > 0) {
     p.freeze -= dt;
     p.vx = 0;
@@ -460,7 +562,8 @@ function stepPlayer(p, dt, isIt, plats) {
       if (p.fx.bubble > 0 && p.vy > BUBBLE_FALL) p.vy = BUBBLE_FALL;
     }
 
-    const cap = MAX_SPEED * (isIt ? IT_SPEED_BONUS : 1) * (p.fx.turbo > 0 ? TURBO_MUL : 1);
+    const itMul = isIt ? (panic ? PANIC_BONUS : IT_SPEED_BONUS) : 1;
+    const cap = MAX_SPEED * itMul * (p.fx.turbo > 0 ? TURBO_MUL : 1);
     if (p.vx > cap) p.vx = cap;
     if (p.vx < -cap) p.vx = -cap;
 
@@ -592,6 +695,19 @@ function botThink(room, b, dt) {
     }
     if (crowded && bestD > d.panic * 0.8) dir = -dir;
 
+    /* a pickup on this floor, in the direction away from the chaser, is
+       worth a small detour - it is usually the thing that saves them */
+    if (room.pickups.length && Math.random() < d.jumpSkill) {
+      for (const k of room.pickups) {
+        if (Math.abs(k.y - b.y) > 130) continue;
+        const gap = k.x - b.x;
+        if (Math.abs(gap) > 420) continue;
+        if ((gap > 0 ? 1 : -1) !== dir && bestD < d.panic) continue;   // not back into the chaser
+        dir = gap > 0 ? 1 : -1;
+        break;
+      }
+    }
+
     if (b.x < 260) dir = 1;
     else if (b.x > W - 260) dir = -1;
 
@@ -718,8 +834,176 @@ function applyCheat(room, p, code) {
     case 'MERCY':
       p.itTime = Math.max(0, p.itTime - MERCY_SECONDS);
       break;
+
+    case 'PORTAL':
+      if (!spawnPortalPair(room)) return false;
+      break;
+
+    case 'RAIN': {
+      let n = 0;
+      for (let i = 0; i < 3; i++) if (spawnPickup(room)) n++;
+      if (!n) return false;
+      break;
+    }
+
+    case 'SHUFFLE': {
+      const all = [...room.players.values()];
+      if (all.length < 2) return false;
+      const pos = all.map(o => ({ x: o.x, y: o.y }));
+      for (let i = pos.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(i + 1);
+        [pos[i], pos[j]] = [pos[j], pos[i]];
+      }
+      all.forEach((o, i) => {
+        room.events.push({ e: 'warp', x: o.x, y: o.y });
+        o.x = pos[i].x; o.y = pos[i].y; o.vy = 0; o.portalCd = PORTAL_CD;
+        room.events.push({ e: 'warp', x: o.x, y: o.y });
+        if (o.id !== p.id) notify(o, 'SHUFFLE', 'the whole arena got shuffled');
+      });
+      break;
+    }
   }
   return true;
+}
+
+/* One way in for both the typed codes and the cheat menu, so the two can
+   never behave differently. Returns what to tell the player. */
+function tryCheat(room, player, code) {
+  if (!CHEATS[code]) return { ok: false, why: 'no such code' };
+  if (!room.cheatsOn) return { ok: false, why: 'cheats are switched off in this room' };
+  if ((player.cd[code] || 0) > 0) return { ok: false, why: 'recharging (' + Math.ceil(player.cd[code]) + 's)' };
+  if (applyCheat(room, player, code) === false) {
+    return { ok: false, why: CHEAT_IT.has(code) ? 'only works while you are IT' : 'nothing for it to work on' };
+  }
+  player.cd[code] = CHEATS[code].cd;
+  broadcast(room, { t: 'cheatfx', id: player.id, code });
+  return { ok: true, dur: CHEATS[code].dur };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Roaming portals and pickups                                        */
+/* ------------------------------------------------------------------ */
+
+/* Nothing is bolted to the map. A portal pair tears open somewhere random,
+   works for a few seconds and collapses; pickups drop in the same way. Both
+   only ever appear in clear air just above a ledge, which is where players
+   actually run - a portal in the middle of the sky would never be used. */
+function boxedIn(x, y, plats, r) {
+  for (const o of plats) {
+    const cx = Math.max(o.x, Math.min(x, o.x + o.w));
+    const cy = Math.max(o.y, Math.min(y, o.y + o.h));
+    if (Math.hypot(x - cx, y - cy) < r) return true;
+  }
+  return false;
+}
+
+function buildSpots(plats) {
+  const spots = [];
+  for (const o of plats) {
+    if (o.w < 140) continue;
+    for (let x = o.x + 70; x <= o.x + o.w - 70; x += 150) {
+      const y = o.y - SPOT_LIFT;
+      if (y < 110 || x < 70 || x > W - 70) continue;
+      if (boxedIn(x, y, plats, PORTAL_R + 6)) continue;
+      spots.push({ x, y });
+    }
+  }
+  return spots;
+}
+
+/* n free spots, clear of whatever is already out and far enough apart */
+function pickSpots(room, n, minApart) {
+  const taken = room.portals.concat(room.pickups);
+  const pool = room.spots.filter(s => !taken.some(g => Math.hypot(g.x - s.x, g.y - s.y) < 170));
+  if (pool.length < n) return null;
+  const out = [];
+  for (let guard = 80; guard > 0 && out.length < n; guard--) {
+    const s = pool[crypto.randomInt(pool.length)];
+    if (out.includes(s)) continue;
+    if (out.some(o => Math.hypot(o.x - s.x, o.y - s.y) < minApart)) continue;
+    out.push(s);
+  }
+  return out.length === n ? out : null;
+}
+
+function spawnPortalPair(room) {
+  const spot = pickSpots(room, 2, PORTAL_MIN_SEP);
+  if (!spot) return false;
+  const pair = room.gadgetSeq++;
+  const life = PORTAL_LIFE_MIN + Math.random() * (PORTAL_LIFE_MAX - PORTAL_LIFE_MIN);
+  const hue = room.hueSeq++ % 4;
+  for (let i = 0; i < 2; i++) {
+    room.portals.push({ id: room.gadgetSeq++, pair, hue, x: spot[i].x, y: spot[i].y, age: 0, life });
+    room.events.push({ e: 'open', x: spot[i].x, y: spot[i].y, hue });
+  }
+  room.portalDirty = true;
+  return true;
+}
+
+function spawnPickup(room) {
+  const spot = pickSpots(room, 1, 0);
+  if (!spot) return false;
+  const kind = PICKUP_BAG[crypto.randomInt(PICKUP_BAG.length)];
+  room.pickups.push({ id: room.gadgetSeq++, kind, x: spot[0].x, y: spot[0].y, age: 0 });
+  room.pickupDirty = true;
+  return true;
+}
+
+function applyPickup(room, p, kind) {
+  let got = kind;
+  if (kind === 'shield' && room.itId === p.id) got = 'boost';   // the chaser cannot be untaggable
+  switch (got) {
+    case 'boost':   p.fx.turbo  = Math.max(p.fx.turbo  || 0, BOOST_DUR); break;
+    case 'feather': p.fx.moon   = Math.max(p.fx.moon   || 0, FEATHER_DUR); break;
+    case 'shield':  p.fx.immune = Math.max(p.fx.immune || 0, SHIELD_DUR); break;
+    case 'swap': {
+      const others = [...room.players.values()].filter(o => o.id !== p.id);
+      if (!others.length) { p.fx.turbo = Math.max(p.fx.turbo || 0, BOOST_DUR); got = 'boost'; break; }
+      const o = others[crypto.randomInt(others.length)];
+      room.events.push({ e: 'warp', x: p.x, y: p.y });
+      room.events.push({ e: 'warp', x: o.x, y: o.y });
+      const tx = p.x, ty = p.y;
+      p.x = o.x; p.y = o.y; o.x = tx; o.y = ty;
+      p.vy = 0; o.vy = 0;
+      p.portalCd = PORTAL_CD; o.portalCd = PORTAL_CD;
+      notify(o, 'SWAP', 'somebody swapped places with you');
+      break;
+    }
+  }
+  room.events.push({ e: 'grab', id: p.id, kind: got, x: p.x, y: p.y });
+}
+
+function updateGadgets(room, dt) {
+  for (let i = room.portals.length - 1; i >= 0; i--) {
+    const g = room.portals[i];
+    g.age += dt;
+    if (g.age >= g.life + PORTAL_FADE) { room.portals.splice(i, 1); room.portalDirty = true; }
+  }
+  room.portalWait -= dt;
+  /* an arena with nothing to dive into is the dull version of this game,
+     so a wiped-out map re-opens quickly instead of waiting out the gap */
+  if (!room.portals.length && room.portalWait > 1.2) room.portalWait = 1.2;
+  if (room.portalWait <= 0) {
+    if (room.portals.length < PORTAL_PAIRS_MAX * 2) spawnPortalPair(room);
+    room.portalWait = PORTAL_GAP_MIN + Math.random() * (PORTAL_GAP_MAX - PORTAL_GAP_MIN);
+  }
+
+  for (const k of room.pickups) k.age += dt;
+  room.pickupWait -= dt;
+  if (room.pickupWait <= 0) {
+    if (room.pickups.length < PICKUP_MAX) spawnPickup(room);
+    room.pickupWait = PICKUP_GAP_MIN + Math.random() * (PICKUP_GAP_MAX - PICKUP_GAP_MIN);
+  }
+}
+
+/* compact wire forms - only resent when the set actually changes */
+function portalWire(room) {
+  return room.portals.map(g => [g.id, Math.round(g.x), Math.round(g.y), g.pair, g.hue,
+                                Math.round(g.age * 10) / 10, Math.round(g.life * 10) / 10]);
+}
+function pickupWire(room) {
+  return room.pickups.map(k => [k.id, Math.round(k.x), Math.round(k.y),
+                                PICKUP_KINDS.indexOf(k.kind), Math.round(k.age * 10) / 10]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -730,10 +1014,20 @@ function startRound(room) {
   const players = [...room.players.values()];
   if (players.length < 2) return;
 
-  const level = LEVELS[crypto.randomInt(LEVELS.length)];
+  room.level = crypto.randomInt(LEVELS.length);
+  const level = LEVELS[room.level];
   room.obstacles = level.plats;
   room.pads = level.pads;
-  room.portals = level.portals;
+  room.spots = buildSpots(level.plats);
+  room.portals = [];
+  room.pickups = [];
+  room.portalDirty = true;
+  room.pickupDirty = true;
+  room.gadgetSeq = 1;
+  room.hueSeq = crypto.randomInt(4);
+  room.portalWait = PORTAL_GAP_MIN;
+  room.pickupWait = 2.5;
+  room.panic = false;
   room.state = 'playing';
   room.timeLeft = room.duration;
   room.cooldown = TAG_COOLDOWN;
@@ -749,7 +1043,9 @@ function startRound(room) {
     const s = spots[i % spots.length];
     p.x = s.x; p.y = s.y; p.vx = 0; p.vy = 0;
     p.itTime = 0; p.freeze = 0; p.r = R;
-    p.fx = { turbo: 0, ghost: 0, immune: 0, mini: 0, big: 0, party: 0 };
+    p.fx = { turbo: 0, ghost: 0, immune: 0, mini: 0, big: 0, party: 0,
+             moon: 0, bubble: 0, fog: 0, mirror: 0 };
+    p.portalCd = 0;
     p.cd = {}; p.kbuf = '';
     p.in = { u: false, d: false, l: false, r: false, j: false };
     if (p.bot) p.ai = { next: 0, stuck: 0, hop: p.ai ? p.ai.hop : 0.9 };
@@ -759,12 +1055,19 @@ function startRound(room) {
   const it = room.players.get(room.itId);
   if (it) it.freeze = 1.2;
 
+  /* one pair is already open when the whistle goes, so the first chase
+     has somewhere to go */
+  spawnPortalPair(room);
+
   broadcast(room, {
     t: 'start', arena: { w: W, h: H }, obstacles: room.obstacles,
-    pads: room.pads, portals: room.portals,
-    theme: room.theme, duration: room.duration,
+    pads: room.pads, portals: portalWire(room), pickups: pickupWire(room),
+    theme: room.theme, duration: room.duration, level: room.level,
+    cheats: room.cheatsOn, cheatList: CHEAT_INFO,
     players: playerList(room), it: room.itId,
   });
+  room.portalDirty = false;
+  room.pickupDirty = false;
 
   room.lastTick = Date.now();
   room.snapAcc = 0;
@@ -775,10 +1078,12 @@ function startRound(room) {
 function endRound(room) {
   if (room.timer) { clearInterval(room.timer); room.timer = null; }
   room.state = 'ended';
+  /* the real rule: whoever is still IT on the final whistle loses the round */
+  const loser = room.itId;
   const results = [...room.players.values()]
-    .map(p => ({ id: p.id, name: p.name, color: p.color, itTime: Math.round(p.itTime * 10) / 10, wasIt: p.id === room.itId }))
+    .map(p => ({ id: p.id, name: p.name, color: p.color, itTime: Math.round(p.itTime * 10) / 10, wasIt: p.id === loser }))
     .sort((a, b) => a.itTime - b.itTime);
-  broadcast(room, { t: 'end', results, hostId: room.hostId });
+  broadcast(room, { t: 'end', results, loser, hostId: room.hostId });
 }
 
 function tick(room) {
@@ -798,6 +1103,8 @@ function tick(room) {
     room.countdown = 0;
   }
 
+  updateGadgets(room, dt);
+
   let remaining = dt;
   while (remaining > 0) {
     const step = Math.min(TICK, remaining);
@@ -806,7 +1113,7 @@ function tick(room) {
     for (const p of room.players.values()) {
       if (p.bot) botThink(room, p, step);
       updateEffects(p, step);
-      stepPlayer(p, step, p.id === room.itId, room.obstacles);
+      stepPlayer(p, step, p.id === room.itId, room.obstacles, room.panic);
       if (p.freeze <= 0 && p.fx.ghost <= 0) resolveGadgets(room, p);
 
       /* fell off the bottom of the level - drop them back in */
@@ -840,6 +1147,13 @@ function tick(room) {
     room.timeLeft -= step;
   }
 
+  /* final stretch - the chaser speeds up, because being IT on the whistle
+     is what loses it for you */
+  if (!room.panic && room.timeLeft <= PANIC_SECONDS && room.timeLeft > 0) {
+    room.panic = true;
+    room.events.push({ e: 'panic' });
+  }
+
   if (room.timeLeft <= 0) { endRound(room); return; }
 
   room.snapAcc += dt;
@@ -867,8 +1181,13 @@ function sendSnapshot(room) {
     it: room.itId,
     cd: room.cooldown > 0 ? 1 : 0,
     cnt: room.countdown > 0 ? Math.ceil(room.countdown) : 0,
+    pn: room.panic ? 1 : 0,
     p,
   };
+  /* gadget lists ride along only when they change - the client ages them
+     on its own clock in between */
+  if (room.portalDirty) { msg.pt = portalWire(room); room.portalDirty = false; }
+  if (room.pickupDirty) { msg.pk = pickupWire(room); room.pickupDirty = false; }
   if (room.events.length) { msg.ev = room.events; room.events = []; }
   broadcast(room, msg);
 }
@@ -907,7 +1226,9 @@ function attach(conn) {
           // drop late joiners straight into the running round
           conn.send({
             t: 'start', arena: { w: W, h: H }, obstacles: room.obstacles,
-            theme: room.theme, duration: room.duration,
+            pads: room.pads, portals: portalWire(room), pickups: pickupWire(room),
+            theme: room.theme, duration: room.duration, level: room.level,
+            cheats: room.cheatsOn, cheatList: CHEAT_INFO,
             players: playerList(room), it: room.itId,
           });
         }
@@ -926,6 +1247,7 @@ function attach(conn) {
         if (!player || !room || player.id !== room.hostId) return;
         if (THEMES.includes(m.theme)) room.theme = m.theme;
         if ([60, 120, 180].includes(Number(m.duration))) room.duration = Number(m.duration);
+        if (typeof m.cheats === 'boolean') room.cheatsOn = m.cheats;
         sendLobby(room);
         break;
       }
@@ -966,8 +1288,8 @@ function attach(conn) {
         sendLobby(room);
         break;
       }
-      /* Typed letters stream up one at a time and are matched HERE, so the
-         cheat words never appear in the client file players get sent. */
+      /* Typed letters stream up one at a time and are matched HERE, so a
+         code still counts even if you never open the menu. */
       case 'k': {
         if (!player || !room || room.state !== 'playing') return;
         const ch = String(m.c || '').toUpperCase();
@@ -977,20 +1299,20 @@ function attach(conn) {
         for (const code of Object.keys(CHEATS)) {
           if (!player.kbuf.endsWith(code)) continue;
           player.kbuf = '';
-
-          if ((player.cd[code] || 0) > 0) {
-            conn.send({ t: 'cheatres', code, ok: false, why: 'recharging (' + Math.ceil(player.cd[code]) + 's)' });
-            return;
-          }
-          if (applyCheat(room, player, code) === false) {
-            conn.send({ t: 'cheatres', code, ok: false, why: 'only works while you are IT' });
-            return;
-          }
-          player.cd[code] = CHEATS[code].cd;
-          conn.send({ t: 'cheatres', code, ok: true, dur: CHEATS[code].dur });
-          broadcast(room, { t: 'cheatfx', id: player.id, code });
+          const res = tryCheat(room, player, code);
+          conn.send({ t: 'cheatres', code, ok: res.ok, why: res.why, dur: res.dur });
           return;
         }
+        break;
+      }
+      /* the same codes, picked off the in-game cheat menu instead of typed */
+      case 'cheat': {
+        if (!player || !room || room.state !== 'playing') return;
+        const code = String(m.code || '').toUpperCase();
+        if (!CHEATS[code]) return;
+        player.kbuf = '';
+        const res = tryCheat(room, player, code);
+        conn.send({ t: 'cheatres', code, ok: res.ok, why: res.why, dur: res.dur });
         break;
       }
 

@@ -2,9 +2,59 @@ TAG ARENA
 =========
 
 A small multiplayer tag game. One player is IT and chases everyone else.
-Touch someone and they become IT. Whoever spends the least time as IT wins.
+Touch someone and they become IT.
+
+Whoever is STILL IT when the clock hits zero loses the round. Everyone else
+is ranked by how little time they spent as IT, so the winner is whoever
+managed to dump the tag fastest and never take it back.
 
 Everything here is plain Node.js - no npm install, no internet needed.
+
+
+WHAT IS IN A ROUND
+------------------
+Three maps, picked at random each round: two platform courses and a stepped
+pyramid with a chimney straight up the middle.
+
+Bounce pads
+   Fixed to the map, at the edges (and up the pyramid's chimney). They throw
+   you about twice as high as a jump - the only way up a really big step.
+
+Portals
+   These are NOT part of the map. A pair tears open somewhere random, works
+   for nine to sixteen seconds, then collapses, and another pair opens
+   somewhere else. Step into one, come out of its twin across the arena.
+   - while a portal is still swirling open it does nothing, so you cannot
+     dive into one the instant it appears
+   - in its last two seconds a white ring counts down around it. Diving for
+     a portal that shuts in your face is a great way to get tagged
+   - because they never stay put, no one can camp an escape route
+
+Pickups
+   Also dropped at random, up to three on the map at once. Run through one
+   to take it:
+      SPEED     45% faster for 6s
+      FEATHER   low gravity, huge floaty jumps, for 8s
+      SHIELD    cannot be tagged for 4s - runners only. If the chaser grabs
+                one it turns into SPEED instead
+      SWAP      instantly trade places with a random player
+
+Final 20 seconds
+   The screen edges go red and IT gets noticeably faster. Being IT at the
+   whistle is what loses it for you, so the end of a round is a scramble.
+
+
+CHEAT CODES
+-----------
+Press TAB during a game (or the CHEATS button, top left) for the full menu -
+twenty codes, grouped, with what each one does. Tap one to fire it.
+
+You can also just type the word while you play, without opening anything.
+Both do exactly the same thing.
+
+A few are marked IT ONLY and are refused unless you are the chaser. The host
+can switch cheats off entirely in the lobby ("Cheat codes: Off") for a
+clean race.
 
 
 HOW TO RUN
@@ -41,8 +91,11 @@ Up to 8 players. Phones, tablets and laptops all work.
 
 CONTROLS
 --------
-   Arrow keys or WASD      move
-   On phones               drag anywhere on the screen
+   Arrow keys or WASD      run
+   Up / Space              jump
+   Tab                     cheat code menu (Esc or Tab closes it)
+   On phones               drag anywhere to run, JUMP button to jump,
+                           CHEATS button for the menu
 
 
 THINGS THAT CAN GO WRONG

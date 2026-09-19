@@ -150,6 +150,40 @@
   .crown{font-size:13px; font-weight:800; letter-spacing:.22em; color:#c9a227}
   .wname{font-size:38px; font-weight:900; line-height:1.15; -webkit-text-stroke:2px #12303f; paint-order:stroke fill}
   .wsub{font-size:13px; color:var(--dim); margin-top:2px}
+  .loser{
+    margin-top:12px; font-size:13px; font-weight:800; color:#ff4d6d;
+    border-top:2px dashed var(--line); padding-top:10px;
+  }
+  /* cheat sheet */
+  .cheatbtn{
+    position:absolute; top:12px; left:88px; width:auto; margin:0; padding:8px 14px;
+    font-size:13px; pointer-events:auto; background:#12303f; color:#ffd23f;
+    border:2px solid #ffd23f77; box-shadow:none; border-radius:12px;
+  }
+  .sheet{
+    position:absolute; left:0; right:0; bottom:0; max-height:66%; display:none;
+    flex-direction:column; pointer-events:auto; background:#08182ff5;
+    border-top:3px solid #ffd23f; border-radius:18px 18px 0 0;
+  }
+  .sheet.on{display:flex}
+  .sheetbar{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #ffffff1a; color:#fff}
+  .sheetbar b{font-size:15px; letter-spacing:.04em; white-space:nowrap}
+  .sheetbar input{flex:1; min-width:60px; padding:7px 10px; font-size:13px; background:#ffffff14; border:2px solid #ffffff22; color:#fff; border-radius:10px}
+  .sheetbar button{width:auto; margin:0; padding:7px 13px; font-size:12px; background:#ffffff1a; color:#fff; border:2px solid #ffffff26; box-shadow:none}
+  .sheetnote{padding:9px 14px 0; font-size:11.5px; color:#ffffff85; line-height:1.55}
+  .sheetbody{overflow-y:auto; padding:10px 14px 18px; display:grid; grid-template-columns:repeat(auto-fill,minmax(212px,1fr)); gap:8px}
+  .grouphead{grid-column:1/-1; font-size:11px; font-weight:800; letter-spacing:.16em; color:#ffd23f; margin-top:8px}
+  .cheat{
+    display:flex; flex-direction:column; align-items:stretch; gap:4px;
+    width:100%; margin:0; padding:10px 12px; border-radius:12px; cursor:pointer; text-align:left;
+    background:#ffffff10; border:2px solid #ffffff1f; color:#fff; box-shadow:none; font-size:13px;
+  }
+  .cheat:active{transform:none; background:#ffd23f2e}
+  .cheat .ctop{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .cheat .cb{font-size:10px; font-weight:800; letter-spacing:.06em; color:#9fe8ff; white-space:nowrap}
+  .cheat.itonly .cb{color:#ff9db1}
+  .cheat .cc{font-weight:900; font-size:14px; letter-spacing:.07em; font-family:ui-monospace,Consolas,monospace; color:#ffd23f}
+  .cheat .cd{font-weight:600; font-size:11.5px; line-height:1.4; color:#ffffffb0}
   .jump{
     position:absolute; right:26px; bottom:34px; width:104px; height:104px;
     border-radius:50%; display:none; pointer-events:auto; margin:0; font-size:16px;
@@ -213,6 +247,12 @@
         <option value="180">3 minutes</option>
       </select>
 
+      <label for="cheatOn">Cheat codes</label>
+      <select id="cheatOn">
+        <option value="1" selected>On - anyone can use them</option>
+        <option value="0">Off - clean race</option>
+      </select>
+
       <label for="botDiff">Bots</label>
       <select id="botDiff">
         <option value="easy">Easy</option>
@@ -249,6 +289,16 @@
     <div class="toast" id="toast"></div>
     <div class="perf" id="perf"></div>
     <button class="leave" id="btnQuit">Leave</button>
+    <button class="cheatbtn" id="btnCheats">CHEATS</button>
+    <div class="sheet" id="cheatSheet">
+      <div class="sheetbar">
+        <b>Cheat codes</b>
+        <input id="cheatFind" placeholder="filter" autocomplete="off" spellcheck="false">
+        <button id="btnCheatClose">Close</button>
+      </div>
+      <div class="sheetnote" id="cheatNote"></div>
+      <div class="sheetbody" id="cheatBody"></div>
+    </div>
   </div>
 </div>
 
@@ -312,7 +362,21 @@ var ws = null, myId = null, myCode = "", isHost = false;
 var scene = "menu";
 var players = new Map();          /* id -> {id,name,color,x,y,rx,ry,freeze,itTime,dir} */
 var itId = null, cooldown = 0, timeLeft = 0, countdown = 0;
-var obstacles = [], pads = [], portals = [], theme = "park";
+var obstacles = [], pads = [], portals = [], pickups = [], theme = "park";
+var panic = false;                       /* final stretch - IT speeds up */
+var cheatList = [], cheatsOn = true, cheatOpen = false;
+
+/* gadget constants - must match server.js */
+var PORTAL_WARM = 0.9, PORTAL_FADE = 1.0, PORTAL_R = 46;
+var PICKUP_R = 30, PICKUP_WARM = 0.35, PANIC_BONUS = 1.24;
+var PORTAL_HUES = ["#7cf5ff", "#ff7bd5", "#9dff6e", "#ffc23f"];
+var PICKUP_KINDS = ["boost", "feather", "shield", "swap"];
+var PICKUP_LOOK = {
+  boost:   { c:"#ffd23f", name:"SPEED",   blurb:"45% faster for 6s" },
+  feather: { c:"#7cf5ff", name:"FEATHER", blurb:"moon jumps for 8s" },
+  shield:  { c:"#43e97b", name:"SHIELD",  blurb:"untaggable for 4s" },
+  swap:    { c:"#b57bff", name:"SWAP",    blurb:"traded places with someone" }
+};
 var BOUNCE_V = 1750;   /* must match server */
 var myColor = COLORS[0];
 var particles = [];
@@ -378,6 +442,9 @@ function err(el, msg){
   });
 
   $("dur").onchange = function(){ if (isHost) send({t:"theme", theme:theme, duration:Number($("dur").value)}); };
+  $("cheatOn").onchange = function(){
+    if (isHost) send({t:"theme", theme:theme, duration:Number($("dur").value), cheats: this.value === "1"});
+  };
   $("code").oninput = function(){ this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); };
   $("srv").onchange = function(){
     var v = this.value.trim();
@@ -451,6 +518,8 @@ function handle(m){
 
     case "lobby": {
       myCode = m.code; theme = m.theme; itId = null;
+      if (m.cheatList && m.cheatList.length){ cheatList = m.cheatList; buildCheatMenu(); }
+      if (typeof m.cheats === "boolean") cheatsOn = m.cheats;
       isHost = (m.hostId === myId);
       players.clear();
       m.players.forEach(function(p){ players.set(p.id, p); });
@@ -460,7 +529,12 @@ function handle(m){
     }
 
     case "start": {
-      obstacles = m.obstacles; pads = m.pads || []; portals = m.portals || [];
+      obstacles = m.obstacles; pads = m.pads || [];
+      readPortals(m.portals || []); readPickups(m.pickups || []);
+      if (m.cheatList && m.cheatList.length){ cheatList = m.cheatList; buildCheatMenu(); }
+      if (typeof m.cheats === "boolean") cheatsOn = m.cheats;
+      closeCheats();
+      panic = false;
       theme = m.theme; itId = m.it; timeLeft = m.duration;
       particles = [];
       players.clear();
@@ -474,6 +548,11 @@ function handle(m){
 
     case "s": {
       timeLeft = m.tl; itId = m.it; cooldown = m.cd;
+      panic = !!m.pn;
+      /* portals and pickups only ride along when the set changed - in
+         between, we age our own copies a frame at a time */
+      if (m.pt) readPortals(m.pt);
+      if (m.pk) readPickups(m.pk);
       m.p.forEach(function(a){
         var p = players.get(a[0]);
         if (!p) return;
@@ -510,6 +589,22 @@ function handle(m){
             var wa = Math.random() * Math.PI * 2, ws = 40 + Math.random() * 180;
             particles.push({x:e.x, y:e.y, vx:Math.cos(wa)*ws, vy:Math.sin(wa)*ws, life:0.6, max:0.6, c:"#7cf5ff"});
           }
+        } else if (e.e === "open"){
+          var oc = PORTAL_HUES[e.hue || 0];
+          for (var o2 = 0; o2 < 18; o2++){
+            var oa = Math.random() * Math.PI * 2, os = 90 + Math.random() * 150;
+            particles.push({x:e.x, y:e.y, vx:Math.cos(oa)*os, vy:Math.sin(oa)*os, life:0.55, max:0.55, c:oc});
+          }
+        } else if (e.e === "grab"){
+          var gl = PICKUP_LOOK[e.kind] || PICKUP_LOOK.boost;
+          for (var g2 = 0; g2 < 20; g2++){
+            var ga = Math.random() * Math.PI * 2, gs = 70 + Math.random() * 220;
+            particles.push({x:e.x, y:e.y, vx:Math.cos(ga)*gs, vy:Math.sin(ga)*gs, life:0.6, max:0.6, c:gl.c});
+          }
+          if (e.id === myId) toast(gl.name + " - " + gl.blurb, true);
+        } else if (e.e === "panic"){
+          toast("FINAL 20 SECONDS - IT IS FASTER NOW", false);
+          navigator.vibrate && navigator.vibrate([40, 60, 40]);
         }
       });
       /* correct local prediction toward the server's truth */
@@ -549,6 +644,25 @@ function handle(m){
   }
 }
 
+/* Portals and pickups arrive as flat arrays carrying the age they had when
+   the server sent them. We turn that into a birth timestamp and read the age
+   off the clock: counting it up per frame would stall whenever the browser
+   throttles a background tab, and the portal would then look wrong for
+   several seconds after you came back to it. */
+function readPortals(list){
+  var base = performance.now();
+  portals = list.map(function(a){
+    return { id:a[0], x:a[1], y:a[2], pair:a[3], hue:a[4], t0: base - a[5] * 1000, life:a[6] };
+  });
+}
+function readPickups(list){
+  var base = performance.now();
+  pickups = list.map(function(a){
+    return { id:a[0], x:a[1], y:a[2], kind:PICKUP_KINDS[a[3]] || "boost", t0: base - a[4] * 1000 };
+  });
+}
+function gadgetAge(g, now){ return (now - g.t0) / 1000; }
+
 /* =============================== lobby ui ============================= */
 function renderLobby(m){
   $("lobbyCode").textContent = m.code;
@@ -580,6 +694,7 @@ function renderLobby(m){
   $("btnRemoveBot").disabled = bots === 0;
   if (bots) $("botDiff").value = m.players.filter(function(p){ return p.bot; })[0].diff || "normal";
   $("dur").value = String(m.duration);
+  if (typeof m.cheats === "boolean") $("cheatOn").value = m.cheats ? "1" : "0";
 
   var tk = Object.keys(THEMES).indexOf(m.theme);
   var tel = $("themes");
@@ -619,17 +734,20 @@ function renderResults(m){
     dot.className = "dot"; dot.style.background = p.color;
     var nm = document.createElement("span");
     nm.className = "nm";
-    nm.textContent = p.name + (p.id === myId ? " (you)" : "");
+    nm.textContent = p.name + (p.id === myId ? " (you)" : "") + (p.wasIt ? "  - LOST" : "");
     var tm = document.createElement("span");
     tm.className = "tag"; tm.textContent = p.itTime.toFixed(1) + "s as it";
     li.appendChild(pos); li.appendChild(dot); li.appendChild(nm); li.appendChild(tm);
     ul.appendChild(li);
   });
   var win = m.results[0];
-  $("winner").innerHTML = win
-    ? '<div class="crown">WINNER</div><div class="wname" style="color:' + win.color + '">' +
-      escapeHtml(win.name) + '</div><div class="wsub">only ' + win.itTime.toFixed(1) + 's spent as IT</div>'
-    : "";
+  var lost = null;
+  m.results.forEach(function(p){ if (p.wasIt) lost = p; });
+  $("winner").innerHTML =
+    (win ? '<div class="crown">WINNER</div><div class="wname" style="color:' + win.color + '">' +
+      escapeHtml(win.name) + '</div><div class="wsub">only ' + win.itTime.toFixed(1) + 's spent as IT</div>' : "") +
+    (lost ? '<div class="loser">' + escapeHtml(lost.name) +
+      ' was still IT when the clock ran out</div>' : "");
   isHost = (m.hostId === myId);
   $("btnAgain").style.display = isHost ? "block" : "none";
   $("againHint").textContent = isHost ? "" : "Waiting for the host...";
@@ -642,7 +760,7 @@ var KEYMAP = {
 };
 window.addEventListener("keydown", function(e){
   var k = KEYMAP[e.key];
-  if (!k || scene !== "game") return;
+  if (!k || scene !== "game" || cheatOpen) return;
   e.preventDefault();
   if (!keys[k]) { keys[k] = true; pushInput(); }
 });
@@ -652,9 +770,10 @@ window.addEventListener("keyup", function(e){
   if (keys[k]) { keys[k] = false; pushInput(); }
 });
 
-/* Typed letters go to the server, which does the matching. No word list here. */
+/* Typed letters go to the server, which does the matching. The menu sends
+   whole codes instead, but both end up in the same place. */
 window.addEventListener("keydown", function(e){
-  if (scene !== "game") return;
+  if (scene !== "game" || cheatOpen) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.key && e.key.length === 1 && /[a-zA-Z]/.test(e.key)) send({t:"k", c:e.key.toUpperCase()});
 });
@@ -795,7 +914,8 @@ function predict(dt){
   }
   self.jHeld = keys.j;
 
-  var cap = MAX_SPEED * (myId === itId ? IT_SPEED_BONUS : 1) * ((mine.flags & 4) ? HASTE_MUL : 1);
+  var itMul = myId === itId ? (panic ? PANIC_BONUS : IT_SPEED_BONUS) : 1;
+  var cap = MAX_SPEED * itMul * ((mine.flags & 4) ? HASTE_MUL : 1);
   if (self.vx > cap) self.vx = cap;
   if (self.vx < -cap) self.vx = -cap;
 
@@ -840,7 +960,11 @@ function resize(){
   /* a 2x buffer on a big screen means 4x the pixels to redraw every frame,
      which is the difference between 60fps and a slideshow on laptop GPUs */
   var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  var cw = window.innerWidth, ch = window.innerHeight;
+  /* A hidden tab, a minimised window or a phone mid-rotation can report a
+     zero-sized viewport. Left alone that makes the scale zero, every camera
+     sum turns into NaN, and NaN never washes back out - the arena renders
+     empty for the rest of the round. Keep it to at least one pixel. */
+  var cw = Math.max(1, window.innerWidth || 1), ch = Math.max(1, window.innerHeight || 1);
   if (cw * dpr > 2200) dpr = 2200 / cw;
   cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -848,6 +972,7 @@ function resize(){
   skyCache = null;   /* size changed, rebuild the cached gradient */
   view.s = ch / VIEW_H;                 /* fixed zoom, camera does the rest */
   if (W * view.s < cw) view.s = cw / W; /* never show past the level sides */
+  if (!(view.s > 0) || !isFinite(view.s)) view.s = 1;
 }
 
 /* keep the camera on the local player, clamped to the level */
@@ -861,8 +986,11 @@ function updateCamera(dt){
   var overX = halfW * 0.6, overY = halfH * 0.5;
   tx = Math.max(halfW - overX, Math.min(W - halfW + overX, tx));
   ty = Math.max(halfH - overY, Math.min(H - halfH + overY, ty));
-  /* snap instead of gliding when the gap is huge (respawn, first frame) */
-  if (Math.hypot(tx - cam.x, ty - cam.y) > 600){ cam.x = tx; cam.y = ty; return; }
+  if (!isFinite(tx) || !isFinite(ty)) return;              /* nothing sane to aim at yet */
+  /* snap instead of gliding when the gap is huge (respawn, first frame), or
+     when the camera itself has been knocked out of the numbers */
+  if (!isFinite(cam.x) || !isFinite(cam.y) ||
+      Math.hypot(tx - cam.x, ty - cam.y) > 600){ cam.x = tx; cam.y = ty; return; }
   var k = Math.min(1, dt * 12);
   cam.x += (tx - cam.x) * k;
   cam.y += (ty - cam.y) * k;
@@ -983,8 +1111,9 @@ function draw(now){
   ctx.scale(s, s);
 
   obstacles.forEach(function(o){ drawPlatform(o, T); });
-  portals.forEach(function(g, i){ drawPortal(g, i, now, T); });
+  portals.forEach(function(g){ drawPortal(g, now); });
   pads.forEach(function(b){ drawPad(b, now, T); });
+  pickups.forEach(function(k){ drawPickup(k, now); });
 
   particles.forEach(function(q){
     ctx.globalAlpha = Math.max(0, q.life / q.max);
@@ -1005,6 +1134,18 @@ function draw(now){
   ctx.restore();
 
   offscreenArrows(T);
+
+  /* final stretch: the edges of the screen go red and breathe */
+  if (panic && countdown <= 0){
+    var pv = 0.20 + 0.10 * Math.sin(now / 160);
+    ctx.strokeStyle = "#ff2d55"; ctx.lineWidth = 18;
+    for (var vb = 0; vb < 4; vb++){
+      ctx.globalAlpha = pv * (1 - vb / 4);
+      var inset = vb * 16 + 9;
+      ctx.strokeRect(inset, inset, view.cw - inset * 2, view.ch - inset * 2);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 function puff(x, y, r){
@@ -1058,26 +1199,128 @@ function drawPad(b, now, T){
   ctx.lineCap = "butt";
 }
 
-function drawPortal(g, i, now, T){
-  var pair = Math.floor(i / 2);
-  var hue = pair === 0 ? "#7cf5ff" : "#ff7bd5";
-  var wob = 1 + 0.09 * Math.sin(now / 200 + i);
-  var rr = 44 * wob;
+/* A portal spends its life in three stages: swirling open (no use to
+   anyone yet), live, then collapsing. The size sells which one it is in. */
+function portalGrow(age, life){
+  if (age < PORTAL_WARM) return 0.15 + 0.85 * (age / PORTAL_WARM);
+  var over = age - life;
+  if (over > 0) return Math.max(0, 1 - over / PORTAL_FADE);
+  return 1;
+}
 
-  /* layered translucent ellipses instead of a per-frame gradient object */
-  ctx.globalAlpha = 0.22;
+function drawPortal(g, now){
+  var age = gadgetAge(g, now);
+  var grow = portalGrow(age, g.life);
+  if (grow <= 0.02) return;
+  var live = (age >= PORTAL_WARM && age <= g.life);
+  var hue = PORTAL_HUES[g.hue % PORTAL_HUES.length];
+  var spin = now / (live ? 520 : 150) + g.id;
+  var wob = 1 + 0.08 * Math.sin(now / 200 + g.id);
+  var rr = PORTAL_R * wob * grow;
+
+  /* the glow, as stacked translucent discs - cheaper than a gradient */
+  ctx.globalAlpha = 0.16 * (live ? 1 : 0.7);
   ctx.fillStyle = hue;
-  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.72, rr, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(g.x, g.y, rr * 1.35, 0, 7); ctx.fill();
   ctx.globalAlpha = 0.3;
-  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.5, rr * 0.78, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(g.x, g.y, rr * 0.92, 0, 7); ctx.fill();
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(g.x, g.y, rr * 0.34, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
 
+  /* rim, dashed and spinning fast while it is still opening */
   ctx.strokeStyle = hue; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.ellipse(g.x, g.y, rr * 0.55, rr * 0.85, 0, 0, 7); ctx.stroke();
-  ctx.strokeStyle = "#ffffffcc"; ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(g.x, g.y, rr * 0.33, rr * 0.6, Math.sin(now / 400 + i) * 0.5, 0, 7);
-  ctx.stroke();
+  if (!live) ctx.setLineDash([9, 9]);
+  ctx.save();
+  ctx.translate(g.x, g.y); ctx.rotate(spin);
+  ctx.beginPath(); ctx.arc(0, 0, rr * 0.95, 0, 7); ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* three sparks orbiting the mouth */
+  ctx.fillStyle = "#ffffffdd";
+  for (var i = 0; i < 3; i++){
+    var a = spin * 2.2 + i * 2.094;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * rr * 0.95, Math.sin(a) * rr * 0.6, 3.4, 0, 7);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  /* a thin countdown ring in the last two seconds, so nobody dives into
+     one that is about to shut */
+  var left = g.life - age;
+  if (live && left < 2.2){
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(now / 90);
+    ctx.beginPath();
+    ctx.arc(g.x, g.y, rr * 1.2, -Math.PI / 2, -Math.PI / 2 + 6.283 * (left / 2.2));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawPickup(k, now){
+  var look = PICKUP_LOOK[k.kind] || PICKUP_LOOK.boost;
+  var kage = gadgetAge(k, now);
+  var pop = kage < PICKUP_WARM ? kage / PICKUP_WARM : 1;
+  var bob = Math.sin(now / 260 + k.id) * 6;
+  var x = k.x, y = k.y + bob, r = PICKUP_R * (0.4 + 0.6 * pop);
+
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = look.c;
+  ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  /* a tilted rounded square, like a loot crate */
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(now / 700 + k.id) * 0.25);
+  ctx.fillStyle = look.c;
+  roundRect(-r * 0.78, -r * 0.78, r * 1.56, r * 1.56, 9); ctx.fill();
+  ctx.strokeStyle = "#12303f"; ctx.lineWidth = 3.5;
+  roundRect(-r * 0.78, -r * 0.78, r * 1.56, r * 1.56, 9); ctx.stroke();
+
+  ctx.strokeStyle = "#12303f"; ctx.lineWidth = 3.5;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  var u = r * 0.42;
+  if (k.kind === "boost"){                       // lightning
+    ctx.fillStyle = "#12303f";
+    ctx.beginPath();
+    ctx.moveTo(u * 0.35, -u * 1.2); ctx.lineTo(-u * 0.75, u * 0.15);
+    ctx.lineTo(-u * 0.05, u * 0.15); ctx.lineTo(-u * 0.35, u * 1.2);
+    ctx.lineTo(u * 0.8, -u * 0.2); ctx.lineTo(u * 0.1, -u * 0.2);
+    ctx.closePath(); ctx.fill();
+  } else if (k.kind === "feather"){              // two rising chevrons
+    for (var c = 0; c < 2; c++){
+      var cy = u * (0.45 + c * 0.75);
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.8, cy); ctx.lineTo(0, cy - u * 0.8); ctx.lineTo(u * 0.8, cy);
+      ctx.stroke();
+    }
+  } else if (k.kind === "shield"){               // shield outline
+    ctx.beginPath();
+    ctx.moveTo(0, -u * 1.15);
+    ctx.lineTo(u * 0.9, -u * 0.6);
+    ctx.lineTo(u * 0.9, u * 0.25);
+    ctx.quadraticCurveTo(u * 0.9, u * 1.1, 0, u * 1.25);
+    ctx.quadraticCurveTo(-u * 0.9, u * 1.1, -u * 0.9, u * 0.25);
+    ctx.lineTo(-u * 0.9, -u * 0.6);
+    ctx.closePath(); ctx.stroke();
+  } else {                                       // swap: two arrows
+    for (var d = 0; d < 2; d++){
+      var s2 = d ? -1 : 1, yy = u * 0.55 * s2;
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.9 * s2, yy); ctx.lineTo(u * 0.9 * s2, yy); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(u * 0.3 * s2, yy - u * 0.5 * s2);
+      ctx.lineTo(u * 0.9 * s2, yy);
+      ctx.lineTo(u * 0.3 * s2, yy + u * 0.5 * s2);
+      ctx.stroke();
+    }
+  }
+  ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+  ctx.restore();
 }
 
 /* little markers so you can tell where off-screen players are */
@@ -1229,6 +1472,27 @@ function drawPlayer(p, now, T){
     ctx.setLineDash([]);
   }
 
+  /* the arrow over whoever is IT - the one thing you always need to see */
+  if (isIt){
+    var ay = y - r - 58 + Math.sin(now / 180) * 6;
+    ctx.save();
+    ctx.translate(x, ay);
+    ctx.beginPath();
+    ctx.moveTo(0, 17);
+    ctx.lineTo(-16, -5);
+    ctx.lineTo(-6.5, -5);
+    ctx.lineTo(-6.5, -18);
+    ctx.lineTo(6.5, -18);
+    ctx.lineTo(6.5, -5);
+    ctx.lineTo(16, -5);
+    ctx.closePath();
+    ctx.lineJoin = "round"; ctx.lineWidth = 5; ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fillStyle = "#ff2d55"; ctx.fill();
+    ctx.lineJoin = "miter";
+    ctx.restore();
+  }
+
   /* name plate */
   ctx.font = NAME_FONT;
   ctx.textAlign = "center";
@@ -1242,7 +1506,7 @@ function drawPlayer(p, now, T){
 function hud(){
   var t = Math.max(0, timeLeft);
   $("timer").textContent = Math.floor(t / 60) + ":" + ("0" + Math.floor(t % 60)).slice(-2);
-  $("timer").classList.toggle("low", t <= 10 && countdown <= 0);
+  $("timer").classList.toggle("low", panic && countdown <= 0);
 
   var cd = $("count");
   if (countdown > 0){ cd.textContent = countdown; cd.classList.add("on"); }
@@ -1275,6 +1539,84 @@ function hud(){
 }
 hud._last = 0;
 
+/* ============================ cheat menu ============================= */
+/* Built from the list the server sends, so the menu can never list a code
+   the server does not have. */
+function buildCheatMenu(){
+  var body = $("cheatBody");
+  if (!body) return;
+  body.innerHTML = "";
+  var groups = [];
+  cheatList.forEach(function(c){ if (groups.indexOf(c.grp) < 0) groups.push(c.grp); });
+  groups.forEach(function(g){
+    var h = document.createElement("div");
+    h.className = "grouphead";
+    h.textContent = String(g).toUpperCase();
+    body.appendChild(h);
+    cheatList.forEach(function(c){
+      if (c.grp !== g) return;
+      var b = document.createElement("button");
+      b.className = "cheat" + (c.it ? " itonly" : "");
+      b.setAttribute("data-code", c.code);
+      b.innerHTML =
+        '<span class="ctop"><span class="cc">' + escapeHtml(c.code) + '</span>' +
+        '<span class="cb">' + (c.it ? "IT ONLY - " : "") + (c.dur ? c.dur + "s" : "INSTANT") + '</span></span>' +
+        '<span class="cd">' + escapeHtml(c.desc) + '</span>';
+      b.onclick = function(){ send({t:"cheat", code:c.code}); closeCheats(); };
+      body.appendChild(b);
+    });
+  });
+  filterCheats();
+}
+
+function filterCheats(){
+  var body = $("cheatBody");
+  if (!body) return;
+  var q = ($("cheatFind").value || "").trim().toUpperCase();
+  var kids = [].slice.call(body.children);
+  kids.forEach(function(el){
+    if (el.className === "grouphead") return;
+    el.style.display = (!q || el.textContent.toUpperCase().indexOf(q) >= 0) ? "" : "none";
+  });
+  /* a heading whose whole group got filtered away should go too */
+  var head = null, seen = 0;
+  kids.concat([null]).forEach(function(el){
+    if (!el || el.className === "grouphead"){
+      if (head) head.style.display = seen ? "" : "none";
+      head = el; seen = 0;
+    } else if (el.style.display !== "none") seen++;
+  });
+}
+
+function openCheats(){
+  if (scene !== "game") return;
+  cheatOpen = true;
+  $("cheatSheet").classList.add("on");
+  $("cheatNote").innerHTML = cheatsOn
+    ? "Tap one, or just type the word while you play - both work. Tab or Esc closes this."
+    : "<b>The host has switched cheats off for this room.</b> The codes below will not fire.";
+  $("cheatFind").value = "";
+  filterCheats();
+  /* let go of every key, or you keep running while you read */
+  keys = {u:false, d:false, l:false, r:false, j:false};
+  pushInput();
+}
+
+function closeCheats(){
+  cheatOpen = false;
+  var el = $("cheatSheet");
+  if (el) el.classList.remove("on");
+}
+
+$("btnCheats").onclick = function(){ if (cheatOpen) closeCheats(); else openCheats(); };
+$("btnCheatClose").onclick = closeCheats;
+$("cheatFind").oninput = filterCheats;
+window.addEventListener("keydown", function(e){
+  if (scene !== "game") return;
+  if (e.key === "Tab"){ e.preventDefault(); if (cheatOpen) closeCheats(); else openCheats(); }
+  else if (e.key === "Escape" && cheatOpen){ e.preventDefault(); closeCheats(); }
+});
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
@@ -1283,7 +1625,7 @@ function escapeHtml(s){
 
 /* touch devices get a jump button and a different hint */
 if ("ontouchstart" in window){
-  $("hint").textContent = "Drag to run, tap JUMP to jump";
+  $("hint").textContent = "Drag to run, tap JUMP - portals and pickups appear anywhere";
   $("btnJump").style.display = "block";
   var jb = $("btnJump");
   var jStart = function(e){ e.preventDefault(); if (!keys.j){ keys.j = true; pushInput(); } };
@@ -1292,7 +1634,7 @@ if ("ontouchstart" in window){
   jb.addEventListener("touchend", jEnd, {passive:false});
   jb.addEventListener("touchcancel", jEnd, {passive:false});
 } else {
-  $("hint").textContent = "Arrows / WASD to run  -  Up or Space to jump  -  Down to drop through";
+  $("hint").textContent = "Arrows / WASD to run  -  Up or Space to jump  -  Tab for cheat codes";
 }
 </script>
 </body>
