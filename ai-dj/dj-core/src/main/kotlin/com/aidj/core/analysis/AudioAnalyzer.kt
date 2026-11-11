@@ -43,6 +43,8 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val eLow: FloatArray,
         val eHigh: FloatArray,
         val vocal: FloatArray,
+        /** Per-frame 12-bin chroma (frames * 12), 250 Hz - 2.5 kHz, used for harmonic-change (downbeat) cues. */
+        val chroma: FloatArray,
     )
 
     fun analyze(samples: FloatArray, sampleRate: Int, progress: (Float) -> Unit = {}): TrackAnalysis {
@@ -123,6 +125,11 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val eLow = FloatArray(frames)
         val eHigh = FloatArray(frames)
         val vocal = FloatArray(frames)
+        val chroma = FloatArray(frames * 12)
+        val binPc = IntArray(n / 2 + 1) { k ->
+            val hz = k * binHz
+            if (hz < 250 || hz > 2500) -1 else (69 + 12 * log2(hz / 440.0)).roundToInt().mod(12)
+        }
         for (t in 0 until frames) {
             fft.magnitude(x, t * hop, mag)
             var flux = 0f; var fluxLow = 0f; var fluxHigh = 0f
@@ -143,6 +150,8 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
                 }
                 prevLog[k] = l
                 if (k in vLo..vHi) { vSum += m; vLogSum += ln(m + 1e-9) }
+                val pc = binPc[k]
+                if (pc >= 0) chroma[t * 12 + pc] += l
             }
             onset[t] = flux; onsetLow[t] = fluxLow; onsetHigh[t] = fluxHigh
             eAll[t] = all; eLow[t] = low; eHigh[t] = high
@@ -155,7 +164,7 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
             val share = if (all > 1e-12f) midE / all else 0f
             vocal[t] = (share * (1.0 - flatness)).toFloat()
         }
-        return Features(sr.toDouble() / hop, onset, onsetLow, onsetHigh, eAll, eLow, eHigh, vocal)
+        return Features(sr.toDouble() / hop, onset, onsetLow, onsetHigh, eAll, eLow, eHigh, vocal, chroma)
     }
 
     /** Local-mean-removed, half-wave rectified, normalised onset envelope with kick emphasis. */
@@ -294,8 +303,9 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         mean /= smooth.size
         val ratio = bestScore / max(1e-9, mean)
         val conf = ((ratio - 1.2) / 2.3).coerceIn(0.0, 1.0).toFloat()
-        // Envelope frame t covers samples [t*hop, t*hop+n); onset energy is centred ~n/2 later.
-        val latency = 512.0 / 256.0 / fps * 0.5
+        // Envelope frame t covers samples [t*hop, t*hop+n). Calibrated against synthetic material with known
+        // beat positions (see AnalyzerTest): the flux peak trails the frame start by ~3 hops.
+        val latency = 3.0 / fps
         val period = 60.0 / bestBpm
         var first = bestPhase + latency
         while (first - period >= 0) first -= period
@@ -308,7 +318,7 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val logE = FloatArray(f.eAll.size) { ln(1e-6f + f.eAll[it]) }
         val logL = FloatArray(f.eLow.size) { ln(1e-6f + f.eLow[it]) }
         val logH = FloatArray(f.eHigh.size) { ln(1e-6f + f.eHigh[it]) }
-        fun frameOf(beat: Int) = ((grid.beatTime(beat.toDouble())) * f.fps)
+        fun frameOf(beat: Int) = grid.beatTime(beat.toDouble()) * f.fps
         fun meanRange(a: FloatArray, from: Double, to: Double): Float {
             val s = max(0, from.toInt()); val e = min(a.size, to.toInt())
             if (e <= s) return 0f
@@ -316,19 +326,41 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
             for (i in s until e) sum += a[i]
             return sum / (e - s)
         }
-        val lowOn = normalize(f.onsetLow); val highOn = normalize(f.onsetHigh)
-        val score = DoubleArray(4)
+        // Mean chroma vector over each beat.
+        val beatChroma = Array(nBeats) { b ->
+            val v = FloatArray(12)
+            val s = max(0, frameOf(b).toInt()); val e = min(f.eAll.size, frameOf(b + 1).toInt())
+            for (t in s until e) for (k in 0 until 12) v[k] += f.chroma[t * 12 + k]
+            v
+        }
+        fun cosDist(a: FloatArray, b: FloatArray): Float {
+            var d = 0f; var na = 0f; var nb = 0f
+            for (k in 0 until 12) { d += a[k] * b[k]; na += a[k] * a[k]; nb += b[k] * b[k] }
+            return if (na < 1e-9f || nb < 1e-9f) 0f else 1f - d / sqrt(na * nb)
+        }
+        fun sumChroma(from: Int, to: Int): FloatArray {
+            val v = FloatArray(12)
+            for (b in max(0, from) until min(nBeats, to)) for (k in 0 until 12) v[k] += beatChroma[b][k]
+            return v
+        }
+        val lowOn = normalize(f.onsetLow)
+        val harm = DoubleArray(4); val struct = DoubleArray(4); val kick = DoubleArray(4)
         for (beat in 4 until nBeats - 4) {
             val fb = frameOf(beat)
             val fPrev = frameOf(beat - 4); val fNext = frameOf(beat + 4)
-            val nov = abs(meanRange(logE, fb, fNext) - meanRange(logE, fPrev, fb)) +
+            struct[beat % 4] += (abs(meanRange(logE, fb, fNext) - meanRange(logE, fPrev, fb)) +
                 abs(meanRange(logL, fb, fNext) - meanRange(logL, fPrev, fb)) +
-                abs(meanRange(logH, fb, fNext) - meanRange(logH, fPrev, fb))
+                abs(meanRange(logH, fb, fNext) - meanRange(logH, fPrev, fb))).toDouble()
+            // Chords change on (half-)bar lines: compare the 2 beats before and after.
+            harm[beat % 4] += cosDist(sumChroma(beat - 2, beat), sumChroma(beat, beat + 2)).toDouble()
             val i = fb.roundToInt().coerceIn(0, lowOn.size - 1)
-            var lo = 0f; var hi = 0f
-            for (d in -2..2) { val j = (i + d).coerceIn(0, lowOn.size - 1); lo = max(lo, lowOn[j]); hi = max(hi, highOn[j]) }
-            score[beat % 4] += nov + 0.08 * lo + 0.08 * hi
+            var lo = 0f
+            for (d in -2..2) lo = max(lo, lowOn[(i + d).coerceIn(0, lowOn.size - 1)])
+            kick[beat % 4] += lo.toDouble()
         }
+        fun norm(a: DoubleArray): DoubleArray { val m = a.average(); return if (m <= 1e-12) DoubleArray(4) else DoubleArray(4) { a[it] / m } }
+        val h = norm(harm); val st = norm(struct); val k = norm(kick)
+        val score = DoubleArray(4) { 1.0 * h[it] + 1.0 * st[it] + 0.4 * k[it] }
         var best = 0
         for (p in 1..3) if (score[p] > score[best]) best = p
         return best
@@ -404,9 +436,27 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
             rms[b] = ln(1e-9 + a / n).toFloat(); low[b] = ln(1e-9 + l / n).toFloat(); high[b] = ln(1e-9 + h / n).toFloat()
             voc[b] = (v / n).toFloat(); ons[b] = (o / n).toFloat()
         }
-        val rN = pctNorm(rms); val lN = pctNorm(low); val hN = pctNorm(high); val vN = pctNorm(voc); val oN = pctNorm(ons)
+        // Log-power features: fixed dB window below the loud (95th percentile) level, so a near-silent
+        // breakdown does not squash the differences between the other sections.
+        val rN = dbNorm(rms, 15f); val lN = dbNorm(low, 18f); val hN = dbNorm(high, 18f)
+        val vN = pctNorm(voc); val oN = ratioNorm(ons)
         val energy = FloatArray(count) { (0.45f * rN[it] + 0.25f * lN[it] + 0.15f * hN[it] + 0.15f * oN[it]).coerceIn(0f, 1f) }
         return Bars(energy, lN, hN, vN, oN)
+    }
+
+    private fun dbNorm(lnPower: FloatArray, rangeDb: Float): FloatArray {
+        if (lnPower.isEmpty()) return lnPower
+        val s = lnPower.sortedArray()
+        val top = s[(s.size * 0.95).toInt().coerceIn(0, s.size - 1)]
+        val range = rangeDb / 10f * ln(10f)
+        return FloatArray(lnPower.size) { (1f + (lnPower[it] - top) / range).coerceIn(0f, 1f) }
+    }
+
+    private fun ratioNorm(a: FloatArray): FloatArray {
+        if (a.isEmpty()) return a
+        val s = a.sortedArray()
+        val top = max(1e-9f, s[(s.size * 0.95).toInt().coerceIn(0, s.size - 1)])
+        return FloatArray(a.size) { (a[it] / top).coerceIn(0f, 1f) }
     }
 
     private fun pctNorm(a: FloatArray): FloatArray {
@@ -441,7 +491,7 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         }
         val mean = nov.average().toFloat()
         val std = sqrt(nov.map { (it - mean) * (it - mean) }.average()).toFloat()
-        val thresh = mean + 0.6f * std
+        val thresh = max(0.05f, mean + 0.25f * std)
         val candidates = (4..n - 4).filter { nov[it] > thresh && nov[it] >= nov[it - 1] && nov[it] >= nov.getOrElse(it + 1) { 0f } }
             .sortedByDescending { nov[it] }
         val bounds = sortedSetOf(0, n)
@@ -465,21 +515,32 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val sortedE = segs.map { it.en }.sorted()
         val highE = sortedE[(sortedE.size * 0.6).toInt().coerceIn(0, sortedE.size - 1)]
         val types = Array(segs.size) { SectionType.GROOVE }
+        // Pass 1: intro / outro / breakdown.
         for ((i, s) in segs.withIndex()) {
             val prev = segs.getOrNull(i - 1)
             types[i] = when {
                 i == 0 && segs.size > 1 && (s.en < segs[1].en - 0.08f || s.bass < 0.45f) -> SectionType.INTRO
                 i == segs.size - 1 && i > 0 && s.en <= (prev?.en ?: 1f) - 0.05f -> SectionType.OUTRO
                 s.bass < 0.38f && s.en < highE -> SectionType.BREAKDOWN
-                s.en >= highE && s.bass >= 0.5f && prev != null && prev.en < s.en - 0.12f -> SectionType.DROP
                 else -> SectionType.GROOVE
             }
+        }
+        // Pass 2: a rising section right after a breakdown is a buildup.
+        for (i in 1 until segs.size) {
+            if (types[i] == SectionType.GROOVE && types[i - 1] == SectionType.BREAKDOWN && segs[i].slope > 0.02f &&
+                segs[i].e - segs[i].s <= 16 && i + 1 < segs.size) types[i] = SectionType.BUILDUP
+        }
+        // Pass 3: a full-energy section with bass that follows a breakdown/buildup is a drop.
+        for (i in 1 until segs.size) {
+            val s = segs[i]
+            if (types[i] == SectionType.GROOVE && s.en >= highE - 0.03f && s.bass >= 0.5f &&
+                (types[i - 1] == SectionType.BREAKDOWN || types[i - 1] == SectionType.BUILDUP)) types[i] = SectionType.DROP
         }
         val out = ArrayList<Section>()
         for ((i, s) in segs.withIndex()) {
             val voc = s.vocal > 0.55f
             val nextIsDrop = types.getOrNull(i + 1) == SectionType.DROP
-            if (nextIsDrop && (types[i] == SectionType.BREAKDOWN || types[i] == SectionType.GROOVE) && s.slope > 0.02f) {
+            if (nextIsDrop && types[i] == SectionType.BREAKDOWN && s.slope > 0.02f && s.e - s.s >= 8) {
                 // Split the rising tail off as a buildup (at most 8 bars).
                 val buildLen = min(8, (s.e - s.s))
                 val split = s.e - buildLen
