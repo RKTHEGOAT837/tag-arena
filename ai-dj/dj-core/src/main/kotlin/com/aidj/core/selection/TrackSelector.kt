@@ -52,6 +52,8 @@ data class SetContext(
     val minutesPlayed: Float,
     val allowKeyShift: Boolean,
     val maxKeyShift: Int = 2,
+    /** Per-track 0..1 affinity from the user's listening history (Spotify / YouTube Takeout imports). */
+    val tasteScores: Map<String, Float> = emptyMap(),
 )
 
 /**
@@ -119,7 +121,8 @@ class TrackSelector(private val random: Random = Random.Default) {
                     else -> 1f
                 }
                 // Preferences
-                val pref = (if (lt.liked) 0.15f else 0f) - 0.08f * minOf(lt.skipCount, 4) + 0.02f * minOf(lt.playCount, 5)
+                val taste = ctx.tasteScores[lt.track.id] ?: 0f
+                val pref = (if (lt.liked) 0.15f else 0f) - 0.08f * minOf(lt.skipCount, 4) + 0.02f * minOf(lt.playCount, 5) + 0.14f * taste
                 val artistPenalty = if (lt.track.artist.lowercase() in recentArtists) 0.25f else 0f
                 val jitter = random.nextFloat() * 0.06f
 
@@ -131,6 +134,7 @@ class TrackSelector(private val random: Random = Random.Default) {
                 if (energyScore >= 0.8f) reasons += "fits energy target ${"%.2f".format(target)}"
                 if (genreScore >= 1f) reasons += "genre fit"
                 if (lt.liked) reasons += "you liked this"
+                if (taste >= 0.5f) reasons += "matches your listening history"
                 ScoredCandidate(
                     trackId = lt.track.id, title = lt.track.title, artist = lt.track.artist, bpm = a.bpm,
                     key = a.key.camelot, energy = a.energy, genres = lt.track.genres, score = score,

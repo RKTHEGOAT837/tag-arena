@@ -92,6 +92,25 @@ class CoreLogicTest {
     }
 
     @Test
+    fun selectorBoostsTracksFromListeningHistory() {
+        val cur = lt("cur", am124)
+        // Two otherwise-identical candidates (same analysis, same genres): taste decides.
+        val plain = lt("plain", em126)
+        val loved = lt("loved", em126)
+        val ctx = SetContext(cur, emptyList(), emptyList(), 10f, allowKeyShift = false,
+            tasteScores = mapOf("loved" to 1f))
+        // Average over several jitter seeds: the taste boost (0.14) must dominate the 0.06 jitter.
+        var lovedFirst = 0
+        for (seed in 0 until 10) {
+            val ranked = TrackSelector(Random(seed)).rank(listOf(cur, plain, loved), ctx, PartyMode.CLUB.profile())
+            if (ranked.first().trackId == "loved") lovedFirst++
+        }
+        assertTrue("loved ranked first in $lovedFirst/10 runs", lovedFirst >= 9)
+        val ranked = TrackSelector(Random(1)).rank(listOf(cur, plain, loved), ctx, PartyMode.CLUB.profile())
+        assertTrue(ranked.first { it.trackId == "loved" }.reasons.any { "listening history" in it })
+    }
+
+    @Test
     fun plannerBuildsPhraseAlignedBeatmatchedPlans() {
         val planner = TransitionPlanner(Random(3))
         for (style in TransitionStyle.entries) {

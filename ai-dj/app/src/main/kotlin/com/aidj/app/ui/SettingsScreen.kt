@@ -29,6 +29,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -77,7 +79,7 @@ fun SettingsScreen(onBack: () -> Unit, onLibrary: () -> Unit) {
     var token by remember { mutableStateOf(g.settings.backendToken) }
     var jamendo by remember { mutableStateOf(g.settings.jamendoClientId) }
     var testResult by remember { mutableStateOf<String?>(null) }
-    @Suppress("UNUSED_VARIABLE") val ctx = LocalContext.current
+    val ctx = LocalContext.current
     fun upd(block: (com.aidj.app.data.Settings) -> com.aidj.app.data.Settings) = g.settings.update(block)
 
     Column(Modifier.fillMaxSize().background(Neon.Bg)) {
@@ -125,9 +127,49 @@ fun SettingsScreen(onBack: () -> Unit, onLibrary: () -> Unit) {
             Text("Graphics quality (Auto lowers it if frames drop; battery saver forces Low)", color = Neon.Dim, fontSize = 12.sp)
             Choice(GraphicsQuality.entries, s.graphics, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { v -> upd { it.copy(graphics = v) } }
 
-            SectionTitle("Claude AI (online brain)")
-            SwitchRow("Use Claude for decisions & requests", s.claudeEnabled) { v -> upd { it.copy(claudeEnabled = v) } }
-            Text("Claude is reached through your AI DJ backend, which keeps the Anthropic API key off the phone. Without it the local AI DJ still runs everything.",
+            SectionTitle("Your music taste (steers song selection)")
+            val taste = g.taste
+            val spotify by g.spotify.state.collectAsState()
+            var spotifyId by remember { mutableStateOf(g.settings.spotifyClientId) }
+            var tasteCount by remember { mutableStateOf(taste.entryCount()) }
+            var tasteMsg by remember { mutableStateOf<String?>(null) }
+            val historyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) scope.launch {
+                    tasteMsg = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val r = ctx.contentResolver.openInputStream(uri)!!.use { taste.importJson(it) }
+                            "Imported ${r.entries} entries (${r.kind})"
+                        }.getOrElse { "Import failed: ${it.message}" }
+                    }
+                    tasteCount = withContext(Dispatchers.IO) { taste.entryCount() }
+                }
+            }
+            Text("Spotify: connect your account to read your top tracks, top artists and recently played (official API; needs your free Spotify developer Client ID with redirect URI ${com.aidj.app.discovery.SpotifyTaste.REDIRECT}). YouTube: Google removed API access to watch history, so export it with Google Takeout (YouTube → history → JSON) and import the watch-history.json here. Spotify's account-data export files work too. Everything stays on this phone.",
+                color = Neon.Dim, fontSize = 12.sp)
+            OutlinedTextField(spotifyId, { spotifyId = it; g.settings.spotifyClientId = it }, label = { Text("Spotify Client ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { g.spotify.beginAuth(spotifyId) }, enabled = !spotify.busy) {
+                    Text(if (spotify.connected) "Re-connect Spotify" else "Connect Spotify", color = Neon.Lime)
+                }
+                if (spotify.connected) {
+                    OutlinedButton(onClick = { scope.launch { g.spotify.syncNow(); tasteCount = withContext(Dispatchers.IO) { taste.entryCount() } } }, enabled = !spotify.busy) { Text("Sync now", color = Neon.Cyan) }
+                    OutlinedButton(onClick = { g.spotify.disconnect(); tasteCount = taste.entryCount() }) { Text("Disconnect", color = Neon.Red) }
+                }
+            }
+            if (spotify.message.isNotBlank()) Text(spotify.message, color = Neon.Dim, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { historyPicker.launch(arrayOf("application/json", "application/octet-stream", "text/*")) }) { Text("Import history file (Takeout / Spotify)", color = Neon.Cyan) }
+                if (tasteCount > 0) OutlinedButton(onClick = { taste.clear(); tasteCount = 0; tasteMsg = "Taste data cleared" }) { Text("Clear", color = Neon.Red) }
+            }
+            tasteMsg?.let { Text(it, color = Neon.Lime, fontSize = 12.sp) }
+            if (tasteCount > 0) {
+                val top = remember(tasteCount) { taste.topArtists(6).joinToString { it.first } }
+                Text("$tasteCount taste entries · top artists: $top", color = Neon.Text, fontSize = 12.sp)
+            }
+
+            SectionTitle("Cloud AI brain (Claude or Gemini, via your backend)")
+            SwitchRow("Use the cloud AI for decisions & requests", s.claudeEnabled) { v -> upd { it.copy(claudeEnabled = v) } }
+            Text("The backend holds the API key (Anthropic, or a free-tier Google Gemini key with LLM_PROVIDER=gemini) — it never ships in the app. Without a backend the local AI DJ still runs everything.",
                 color = Neon.Dim, fontSize = 12.sp)
             OutlinedTextField(s.backendUrl, { v -> upd { it.copy(backendUrl = v.trim()) } }, label = { Text("Backend URL (https://…)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(token, { token = it; g.settings.backendToken = it }, label = { Text("Device token") }, singleLine = true,

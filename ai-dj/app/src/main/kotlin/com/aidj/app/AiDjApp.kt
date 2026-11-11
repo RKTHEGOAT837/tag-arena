@@ -26,6 +26,8 @@ class AppGraph(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsStore(context)
     val library = LibraryRepository(context)
+    val taste = com.aidj.app.data.TasteStore(context)
+    val spotify = com.aidj.app.discovery.SpotifyTaste(context, settings, taste)
     val analysis = AnalysisQueue(context, library)
     val discovery = Discovery(context, settings, library)
     val engine = NativeEngine()
@@ -38,6 +40,8 @@ class AppGraph(context: Context) {
     val mcp = McpServer(claude, { settings.mcpToken }, BuildConfig.VERSION_NAME)
 
     init {
+        brain.taste = taste
+        claude.taste = taste
         brain.claude = claude
         brain.announcer = announcer
         voice.claude = claude

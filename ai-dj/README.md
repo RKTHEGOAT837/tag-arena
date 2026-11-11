@@ -36,8 +36,8 @@ makes every decision and the party keeps going offline.
 
 ## Install
 
-`release/AI-DJ-1.0.2.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.0.2.apk.sha256`.
+`release/AI-DJ-1.0.3.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.0.3.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).
@@ -52,20 +52,28 @@ For distribution, build with your own keystore (see [Building](#building-from-so
 
 Optional: connect Claude (below). Without it, the "Local AI" does selection, planning and voice commands.
 
-## Claude + backend setup
+## Cloud AI + backend setup (Claude **or Gemini — free tier**)
 
-The APK never contains an API key. Claude is reached through `backend/`, a tiny Node service that holds
-`ANTHROPIC_API_KEY`, authenticates the phone with a device token, validates and bounds every request, and
-calls Claude with the official `@anthropic-ai/sdk`.
+The APK never contains an API key. The cloud brain is reached through `backend/`, a tiny Node service that
+holds the key, authenticates the phone with a device token, validates and bounds every request, and talks to
+the provider. Two interchangeable providers; the app doesn't know which one runs:
+
+- **Gemini (cheap option)** — Google AI Studio keys have a free tier that comfortably covers the DJ's
+  ~1 request per track. The backend translates to/from the same tool-calling shape the app speaks.
+- **Claude** — via the official `@anthropic-ai/sdk`.
 
 ```bash
 cd ai-dj/backend
 npm ci
-export ANTHROPIC_API_KEY=sk-ant-...           # your key
+export LLM_PROVIDER=gemini
+export GEMINI_API_KEY=AIza...                  # free at https://aistudio.google.com/apikey
+# (or: export LLM_PROVIDER=claude; export ANTHROPIC_API_KEY=sk-ant-...)
 export APP_TOKENS=$(openssl rand -hex 24)      # token(s) the phone will use; comma-separate several
 export JAMENDO_CLIENT_ID=...                   # optional, enables Jamendo search through the backend
 npm start                                      # listens on :8787
 ```
+
+`GEMINI_MODEL` defaults to `gemini-2.5-flash`; set `gemini-2.5-flash-lite` for the largest free quota.
 
 Deploy anywhere that runs Node 20+ or Docker (`backend/Dockerfile`; a Render blueprint is in
 `backend/render.yaml`). Use HTTPS in production — the app only allows cleartext to emulator/localhost.
@@ -73,13 +81,32 @@ Deploy anywhere that runs Node 20+ or Docker (`backend/Dockerfile`; a Render blu
 In the app: **Settings → Claude AI** → enter the backend URL (`https://your-host`) and the device token →
 **Test connection**.
 
-What the backend sends to Claude: model `claude-opus-5-5`, adaptive thinking (always on for this model),
+What the backend sends to Claude (when `LLM_PROVIDER=claude`): model `claude-opus-5-5`, adaptive thinking (always on for this model),
 effort `low` for periodic DJ decisions and `medium` for user requests, `tool_choice: auto`, and
 server-side refusal fallbacks (`fallbacks: "default"`). Override the model with `CLAUDE_MODEL`.
 Only metadata and analysis numbers are sent — never audio.
 
 **Cost control:** Claude is consulted about once per track (plus each voice/text request that isn't handled
 locally), never per beat or frame. The backend rate-limits per device (`RATE_LIMIT_PER_MIN`, default 20).
+
+## Your listening taste (Spotify & YouTube history)
+
+Song selection can be steered by what you actually listen to. All taste data stays on the phone.
+
+- **Spotify (live)** — Settings → *Your music taste* → enter your own free Spotify developer Client ID
+  (create an app at developer.spotify.com, add redirect URI `aidj://spotify-callback`), then **Connect
+  Spotify**. The app reads your top tracks, top artists and recently played via the official Web API
+  (OAuth + PKCE, token stored in Keystore-encrypted prefs). Spotify *audio* is never touched — only taste.
+- **YouTube / YouTube Music** — Google removed API access to watch history, so no app can read it live.
+  Export it with [Google Takeout](https://takeout.google.com) (YouTube → history → JSON) and import the
+  `watch-history.json` in the same Settings section. YouTube Music entries count full weight, plain
+  YouTube views less; "Artist – Title" video names are parsed into artist/title pairs.
+- **Spotify export files** — `StreamingHistory*.json` / `endsong*.json` from Spotify's account-data
+  download import the same way.
+
+Matching library tracks get a ranking boost (exact track match > artist match, log-scaled by play counts),
+show "matches your listening history" in the queue's candidate list, and the cloud AI sees your top
+artists in its state snapshot.
 
 ## Music sources and licensing
 
@@ -204,6 +231,9 @@ Legend: ✅ implemented & verified by automated tests · 🟢 implemented, build
 | Analysis | Genre / mood | 🟡 genre from file/catalogue tags; mood from key mode + energy |
 | Analysis | Caching in SQLite, background queue | 🟢 |
 | Selection | Tempo/key (with ±2 st shift)/energy-curve/genre/era/history/preference scoring, no repeats | ✅ |
+| Selection | Listening-taste boost from Spotify/YouTube history (log-scaled artist+track affinity) | ✅ scoring · 🟢 imports |
+| Taste | Spotify OAuth (PKCE) top tracks/artists/recently-played sync | 🟢 · 🌐 your free Spotify Client ID |
+| Taste | Google Takeout YouTube/YouTube Music + Spotify export file import | 🟢 |
 | Mixing | Two decks, beat sync with phase lock, tempo change with key lock, pitch shift, key matching | ✅ |
 | Mixing | 3-band isolator EQ, bipolar filter, echo, reverb, flanger, volume automation, crossfader, bass swaps | ✅ |
 | Mixing | Cue points (phrase-aligned entry cues), loops, slip loops/beat rolls, brake | ✅ |
@@ -214,6 +244,7 @@ Legend: ✅ implemented & verified by automated tests · 🟢 implemented, build
 | Remix | Stem separation / generative AI audio | ❌ needs on-device separation models or a paid service; not faked |
 | AI | Local decision loop: prepare next track early, plan phrase-aligned transition, execute, adapt to overrides | 🟢 (logic paths unit-tested in dj-core) |
 | AI | Claude decision layer + tool loop (validated tools, thinking blocks preserved, refusal/timeout handling) | ✅ loop · 🌐 Claude |
+| AI | Gemini provider on the backend (Messages-API ⇄ functionCall translation, free tier) | ✅ translation tested · 🌐 Gemini key |
 | AI | Works offline / survives Claude failures (timeouts, backoff, local fallback) | 🟢 |
 | MCP | Tool registry + JSON-RPC protocol | ✅ · LAN HTTP server 🟢 |
 | Backend | Key custody, device tokens, validation, rate limiting, Jamendo proxy, official SDK | ✅ |

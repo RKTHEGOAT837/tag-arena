@@ -100,6 +100,11 @@ class MainActivity : ComponentActivity() {
     /** Audio files shared into the app from other apps are imported into the library. */
     private fun handleShare(intent: Intent?) {
         intent ?: return
+        val data = intent.data
+        if (intent.action == Intent.ACTION_VIEW && data?.scheme == "aidj" && data.host == "spotify-callback") {
+            CoroutineScope(Dispatchers.IO).launch { AppGraph.get().spotify.handleCallback(data) }
+            return
+        }
         val uris = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
             Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()

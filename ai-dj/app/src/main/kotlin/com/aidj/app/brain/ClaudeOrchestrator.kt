@@ -55,6 +55,7 @@ class ClaudeOrchestrator(
     private val discovery: Discovery,
     private val settings: SettingsStore,
 ) : DjController {
+    var taste: com.aidj.app.data.TasteStore? = null
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).callTimeout(100, TimeUnit.SECONDS).build()
     private val performer get() = brain.performer
@@ -171,6 +172,9 @@ class ClaudeOrchestrator(
                 }
             }
             put("library_size", library.tracks.value.count { it.analysis != null })
+            taste?.topArtists(8)?.takeIf { it.isNotEmpty() }?.let { top ->
+                put("user_taste_top_artists", buildJsonArray { top.forEach { add(it.first) } })
+            }
         }
         return json.encodeToString(JsonObject.serializer(), o)
     }

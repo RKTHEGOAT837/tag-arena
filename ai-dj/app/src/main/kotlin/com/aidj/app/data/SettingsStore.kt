@@ -92,6 +92,21 @@ class SettingsStore(context: Context) {
         get() = secrets.getString("backend_token", "") ?: ""
         set(v) { secrets.edit().putString("backend_token", v.trim()).apply() }
 
+    /** Spotify developer Client ID (the user's own; free). Not strictly secret but kept with the tokens. */
+    var spotifyClientId: String
+        get() = secrets.getString("spotify_client_id", "") ?: ""
+        set(v) { secrets.edit().putString("spotify_client_id", v.trim()).apply() }
+
+    /** Spotify OAuth refresh token (PKCE). */
+    var spotifyRefreshToken: String
+        get() = secrets.getString("spotify_refresh", "") ?: ""
+        set(v) { secrets.edit().putString("spotify_refresh", v).apply() }
+
+    /** PKCE code verifier for the in-flight Spotify authorisation (survives process death). */
+    var spotifyVerifier: String
+        get() = secrets.getString("spotify_verifier", "") ?: ""
+        set(v) { secrets.edit().putString("spotify_verifier", v).apply() }
+
     /** Optional personal Jamendo client id (otherwise the backend proxies Jamendo with its own). */
     var jamendoClientId: String
         get() = secrets.getString("jamendo_client_id", "") ?: ""

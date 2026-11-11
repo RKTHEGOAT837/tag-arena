@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
 enum class BrainStatus { IDLE, STARTING, PLAYING, PAUSED }
-enum class AiState(val label: String) { OFF("AI off"), LOCAL("Local AI"), THINKING("Claude thinking"), CLAUDE("Claude ready"), OFFLINE("Offline – local AI"), ERROR("Claude unavailable – local AI") }
+enum class AiState(val label: String) { OFF("AI off"), LOCAL("Local AI"), THINKING("Cloud AI thinking"), CLAUDE("Cloud AI ready"), OFFLINE("Offline – local AI"), ERROR("Cloud AI unavailable – local AI") }
 
 /** User/AI overrides for the next transition. */
 data class TransitionOverrides(val style: TransitionStyle? = null, val bars: Int? = null, val drama: Float? = null, val asap: Boolean = false)
@@ -53,6 +53,7 @@ class DjBrain(
 
     var claude: ClaudeOrchestrator? = null
     var announcer: Announcer? = null
+    var taste: com.aidj.app.data.TasteStore? = null
 
     val sessionId = UUID.randomUUID().toString()
     private var sessionStart = 0L
@@ -316,6 +317,7 @@ class DjBrain(
     private fun setContext() = SetContext(
         current = performer.current?.track, history = history.toList(), historyArtists = historyArtists.toList(),
         minutesPlayed = minutesPlayed(), allowKeyShift = settings.current.keyMatching,
+        tasteScores = taste?.scoresFor(library.tracks.value) ?: emptyMap(),
     )
 
     private fun pickFirst(): LibraryTrack? {
