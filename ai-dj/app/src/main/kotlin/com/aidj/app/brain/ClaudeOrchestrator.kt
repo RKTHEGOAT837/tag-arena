@@ -112,8 +112,11 @@ class ClaudeOrchestrator(
         null
     }
 
+    private val purpose = ThreadLocal<String>()
+
     /** Periodic decision for the next track. Returns true when Claude answered. */
     fun decide(): Boolean = guarded {
+        purpose.set("decision")
         val agent = ClaudeAgent(transport, this, maxIterations = 5)
         val r = agent.run("decision", Prompts.SYSTEM, Prompts.decisionPrompt(stateJson()),
             listOf("get_dj_state", "get_audio_analysis", "search_music", "get_song_structure", "select_next_track", "start_transition", "announce", "create_remix"))
@@ -126,6 +129,7 @@ class ClaudeOrchestrator(
         if (!isUsable()) return null
         brain.setAiState(AiState.THINKING)
         val res = guarded {
+            purpose.set("command")
             ClaudeAgent(transport, this, maxIterations = 6).run("command", Prompts.SYSTEM, Prompts.commandPrompt(utterance, stateJson()))
         }
         brain.setAiState(statusAfter(res != null))
@@ -275,7 +279,7 @@ class ClaudeOrchestrator(
             val lt = need(id)
             if (lt.analysis == null) runBlocking { analysis.analyseNow(id) } ?: throw ToolFailure("Track could not be analysed")
             if (!settings.current.allowExplicit && lt.track.explicit) throw ToolFailure("Explicit tracks are disabled")
-            brain.claudeSelected(id, reason)
+            brain.claudeSelected(id, reason, fromDecision = purpose.get() == "decision")
             return DjTools.ok("queued" to lt.track.displayName, "reason" to reason)
         }
         brain.replanIfNotStarted()

@@ -97,8 +97,11 @@ class LibraryRepository(private val context: Context) {
     fun delete(id: String) {
         val t = get(id)?.track
         db.delete("tracks", "id=?", arrayOf(id))
-        // Remove downloaded copies we own; never delete the user's own files.
-        if (t != null && t.source != SourceType.LOCAL_FILE) runCatching { Uri.parse(t.uri).path?.let { java.io.File(it).delete() } }
+        // Remove copies we own (downloads, shared-in files in app storage); never delete the user's original files.
+        if (t != null) runCatching {
+            val u = Uri.parse(t.uri)
+            if (u.scheme == "file" && u.path?.startsWith(context.filesDir.path) == true) java.io.File(u.path!!).delete()
+        }
         reload()
     }
 
@@ -108,6 +111,27 @@ class LibraryRepository(private val context: Context) {
         for (uri in uris) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             val t = readMetadata(uri, idFor(uri.toString())) ?: continue
+            upsert(t); n++
+        }
+        return n
+    }
+
+    /**
+     * Import audio shared from another app. Those URIs carry a temporary read grant only, so the file is
+     * copied into app-private storage first (it is the user's own file, so it keeps LOCAL capabilities).
+     */
+    fun importShared(uris: List<Uri>): Int {
+        val dir = java.io.File(context.filesDir, "music").apply { mkdirs() }
+        var n = 0
+        for (uri in uris) {
+            val id = idFor(uri.toString())
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.replace(Regex("[^A-Za-z0-9._-]"), "_") ?: "shared"
+            val file = java.io.File(dir, "shared_${id}_${name.takeLast(60)}")
+            val ok = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { input.copyTo(it) } } != null
+            }.getOrDefault(false)
+            if (!ok) continue
+            val t = readMetadata(Uri.fromFile(file), id) ?: run { file.delete(); null } ?: continue
             upsert(t); n++
         }
         return n

@@ -97,6 +97,6 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
             else -> emptyList()
         }
-        if (uris.isNotEmpty()) CoroutineScope(Dispatchers.IO).launch { AppGraph.get().library.importDocuments(uris) }
+        if (uris.isNotEmpty()) CoroutineScope(Dispatchers.IO).launch { AppGraph.get().library.importShared(uris) }
     }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "ai-dj-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI DJ backend: holds the Anthropic API key and proxies Claude + Jamendo for the Android app",
+  "type": "module",
+  "main": "server.mjs",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  }
+}

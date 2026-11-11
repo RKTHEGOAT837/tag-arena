@@ -56,7 +56,7 @@ class ClaudeAgent(
             val request = buildJsonObject {
                 put("purpose", purpose)
                 put("system", system)
-                put("messages", JsonArray(messages))
+                put("messages", JsonArray(messages.toList()))
                 put("tools", JsonArray(tools))
             }
             val response = try {

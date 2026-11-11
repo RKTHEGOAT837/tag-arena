@@ -355,6 +355,7 @@ class Performer(
 
     // ------------------------------------------------------------------ state + events
 
+    private var endedReported = -1
     private var lastBeat = Long.MIN_VALUE
     private var lastSection: SectionType? = null
     private var lastVocal = false
@@ -387,7 +388,7 @@ class Performer(
         val c = current
         // Unplanned end of track (AI paused, failed plan...).
         if (c != null && st.decks[c.deck].ended && !st.decks[c.deck].playing && active == null && !paused) {
-            _events.tryEmit(DjEvent.TrackEnded(c.deck))
+            if (endedReported != c.handleId) { endedReported = c.handleId; _events.tryEmit(DjEvent.TrackEnded(c.deck)) }
         }
         val pos = c?.let { st.decks[it.deck].positionSec } ?: 0.0
         val an = c?.analysis

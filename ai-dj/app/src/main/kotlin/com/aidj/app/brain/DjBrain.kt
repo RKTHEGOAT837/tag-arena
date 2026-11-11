@@ -18,6 +18,7 @@ import com.aidj.core.selection.TrackSelector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,6 +77,7 @@ class DjBrain(
 
     private var choosing: Job? = null
     @Volatile private var claudePick: String? = null
+    @Volatile private var decisionOpen = false
     @Volatile private var claudeReason: String? = null
     private var lockedExtended = -1
 
@@ -243,7 +245,11 @@ class DjBrain(
                     if (c != null && c.isUsable()) {
                         claudePick = null; claudeReason = null
                         _ai.value = AiState.THINKING
-                        val ok = withTimeoutOrNull(30_000) { c.decide() }
+                        // The Claude call blocks on network I/O, so run it separately and stop listening at the
+                        // deadline: the music never waits for it, and a late answer is ignored.
+                        decisionOpen = true
+                        val call = scope.async(Dispatchers.IO) { c.decide() }
+                        val ok = try { withTimeoutOrNull(30_000) { call.await() } } finally { decisionOpen = false }
                         _ai.value = c.statusAfter(ok)
                         claudePick?.let { nextId = it; reason = claudeReason ?: "Claude's pick" }
                     }
@@ -301,13 +307,15 @@ class DjBrain(
     }
 
     // Called by the Claude tool controller.
-    fun claudeSelected(trackId: String, reason: String) {
-        claudePick = trackId; claudeReason = reason
-        // A selection outside the periodic decision (e.g. voice request) re-plans immediately.
-        if (choosing?.isActive != true) {
-            manualQueue.value = listOf(trackId) + manualQueue.value.filter { it != trackId }
-            replanIfNotStarted()
+    fun claudeSelected(trackId: String, reason: String, fromDecision: Boolean) {
+        if (fromDecision) {
+            // Periodic decision: only accepted while the brain is still waiting for it.
+            if (decisionOpen) { claudePick = trackId; claudeReason = reason }
+            return
         }
+        // A user request handled by Claude (voice/text): queue it first and re-plan immediately.
+        manualQueue.value = listOf(trackId) + manualQueue.value.filter { it != trackId }
+        replanIfNotStarted()
     }
 
     private fun onEvent(e: DjEvent) {
