@@ -34,10 +34,25 @@ makes every decision and the party keeps going offline.
 
 ---
 
+## Phone-only setup (no computer needed)
+
+1. Install the APK and add music — the local AI runs the whole party with no accounts and no cost.
+2. Optional cloud brain, free, from the phone browser:
+   - [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → create a free Gemini key.
+   - [render.com](https://render.com) → sign in with GitHub → **New → Blueprint** → pick this repo —
+     it offers the `ai-dj-backend` service from the root `render.yaml`. Paste the Gemini key when asked;
+     `APP_TOKENS` is auto-generated (copy it afterwards from the service's **Environment** tab).
+   - In the app: Settings → Cloud AI → backend URL (`https://ai-dj-backend-….onrender.com`) + that token →
+     Test connection. (Free Render instances sleep when idle; the first request after a pause takes ~30 s,
+     and the app just keeps using the local AI meanwhile.)
+3. If anything misbehaves: Settings → **Share diagnostic report** and send the file into the Claude chat —
+   it contains the app log, engine state and the last crash (no tokens or keys), which is usually enough
+   to fix the bug remotely.
+
 ## Install
 
-`release/AI-DJ-1.0.3.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.0.3.apk.sha256`.
+`release/AI-DJ-1.0.4.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.0.4.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).
@@ -256,6 +271,7 @@ Legend: ✅ implemented & verified by automated tests · 🟢 implemented, build
 | Performance | Auto/Low/Medium/High quality, render scaling, battery-saver mode, GL decoupled from audio | 🟢 |
 | Android | Foreground media service, notification/lock-screen/BT media buttons, audio focus, becoming-noisy, route-change stream reopen | 🟢 |
 | Android | Crash recovery (offer to resume the party) | 🟢 |
+| Android | One-tap diagnostic report (app log + engine state + last crash, shareable from Settings) | 🟢 |
 | Testing | On-device: Bluetooth latency, battery drain, memory, long-session soak, real-world analysis accuracy | ❌ not possible here — needs devices |
 
 ## Known limitations

@@ -80,6 +80,7 @@ class AiDjApp : Application() {
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching { getSharedPreferences("aidj_settings", MODE_PRIVATE).edit().putBoolean("crashed", true).commit() }
+            com.aidj.app.data.Diagnostics.recordCrash(this, t, e)
             prev?.uncaughtException(t, e)
         }
     }

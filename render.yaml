@@ -17,3 +17,24 @@ services:
       # works without it.
       # - key: PUBLIC_URL
       #   value: https://tag-arena.onrender.com
+
+  # AI DJ backend (Gemini free tier by default). Deployable entirely from a phone:
+  # render.com -> New -> Blueprint -> this repo. Only GEMINI_API_KEY must be pasted in;
+  # APP_TOKENS is auto-generated (copy it from the service's Environment tab into the app).
+  - type: web
+    name: ai-dj-backend
+    runtime: node
+    plan: free
+    rootDir: ai-dj/backend
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: APP_TOKENS
+        generateValue: true

@@ -206,6 +206,9 @@ fun SettingsScreen(onBack: () -> Unit, onLibrary: () -> Unit) {
             KeyValueRow("Audio CPU load", "%.1f %%".format(live.engine.cpuLoad * 100))
             KeyValueRow("Buffer underruns", "${live.engine.xruns}")
             KeyValueRow("Version", BuildConfig.VERSION_NAME)
+            OutlinedButton(onClick = {
+                scope.launch { withContext(Dispatchers.IO) { runCatching { com.aidj.app.data.Diagnostics.share(ctx) } } }
+            }) { Text("Share diagnostic report (send it to Claude to get bugs fixed)", color = Neon.Cyan) }
             Spacer(Modifier.height(40.dp))
         }
     }
