@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Vinyl -->
+    <path android:fillColor="#FF14102A" android:pathData="M54,22a32,32 0,1 1,0 64a32,32 0,1 1,0 -64z" />
+    <path android:strokeColor="#FF7C4DFF" android:strokeWidth="2" android:fillColor="#00000000" android:pathData="M54,30a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
+    <path android:strokeColor="#FF00E5FF" android:strokeWidth="1.5" android:fillColor="#00000000" android:pathData="M54,38a16,16 0,1 1,0 32a16,16 0,1 1,0 -32z" />
+    <path android:fillColor="#FFFF2D95" android:pathData="M54,47a7,7 0,1 1,0 14a7,7 0,1 1,0 -14z" />
+    <!-- Waveform -->
+    <path android:fillColor="#FF00E5FF" android:pathData="M30,52h3v4h-3zM35,48h3v12h-3zM40,44h3v20h-3zM65,44h3v20h-3zM70,48h3v12h-3zM75,52h3v4h-3z" />
+</vector>

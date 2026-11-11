@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.AiDj" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF05040B</item>
+        <item name="android:statusBarColor">#FF05040B</item>
+        <item name="android:navigationBarColor">#FF05040B</item>
+    </style>
+</resources>

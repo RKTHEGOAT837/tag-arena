@@ -69,7 +69,7 @@ struct ActionEvent {
 };
 
 constexpr int kNumDecks = 2;
-constexpr int kStateSize = 64;
+constexpr int kStateSize = 96;
 constexpr int kNumBands = 16;
 
 class Deck : public FrameSource {

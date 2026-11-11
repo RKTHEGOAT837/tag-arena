@@ -15,12 +15,16 @@ data class DeckState(
     val rate: Double, val effectiveBpm: Double, val vu: Float, val trackId: Int, val durationSec: Double,
     val keylock: Boolean, val pitchSemis: Double, val loopBeats: Double, val phaseErrorBeats: Double,
     val volume: Float, val stretching: Boolean,
+    /** Live mixer values: eqLow, eqMid, eqHigh, filter, echoMix, reverbMix, flangerMix, fader. */
+    val mixer: FloatArray = FloatArray(8) { if (it < 3 || it == 7) 1f else 0f },
 )
 
 data class EngineState(
     val masterBeat: Double, val masterBpm: Double, val framesRendered: Long, val sampleRate: Int, val cpuLoad: Float,
     val xruns: Int, val limiterGain: Float, val rms: Float, val peak: Float, val low: Float, val mid: Float, val high: Float,
     val pendingAutomation: Int, val appliedSeq: Long, val bands: FloatArray, val decks: List<DeckState>,
+    val crossfader: Float = 0f, val drumLevel: Float = 0f, val riserLevel: Float = 0f, val masterFilter: Float = 0f,
+    val masterVolume: Float = 0.9f, val duck: Float = 0f,
 ) {
     companion object {
         val EMPTY = EngineState(0.0, 120.0, 0, 48000, 0f, 0, 1f, 0f, 0f, 0f, 0f, 0f, 0, 0, FloatArray(16),
@@ -36,7 +40,7 @@ class TrackHandle(val id: Int, val sampleRate: Int, val capacityFrames: Long, va
  */
 class NativeEngine {
     private val handle: Long = nativeCreate()
-    private val stateBuf = DoubleArray(64)
+    private val stateBuf = DoubleArray(96)
     @Volatile private var destroyed = false
 
     init { uploadDrumPatterns() }
@@ -106,11 +110,13 @@ class NativeEngine {
         val decks = (0 until 2).map { d ->
             val b = 32 + d * 16
             DeckState(o[b], o[b + 1] > 0.5, o[b + 2] > 0.5, o[b + 3] > 0.5, o[b + 4] > 0.5, o[b + 5], o[b + 6], o[b + 7].toFloat(),
-                o[b + 8].toInt(), o[b + 9], o[b + 10] > 0.5, o[b + 11], o[b + 12], o[b + 13], o[b + 14].toFloat(), o[b + 15] > 0.5)
+                o[b + 8].toInt(), o[b + 9], o[b + 10] > 0.5, o[b + 11], o[b + 12], o[b + 13], o[b + 14].toFloat(), o[b + 15] > 0.5,
+                FloatArray(8) { o[64 + d * 8 + it].toFloat() })
         }
         EngineState(o[0], o[1], o[2].toLong(), o[3].toInt(), o[4].toFloat(), o[5].toInt(), o[6].toFloat(), o[7].toFloat(),
             o[8].toFloat(), o[9].toFloat(), o[10].toFloat(), o[11].toFloat(), o[12].toInt(), o[13].toLong(),
-            FloatArray(16) { o[14 + it].toFloat() }, decks)
+            FloatArray(16) { o[14 + it].toFloat() }, decks,
+            o[80].toFloat(), o[81].toFloat(), o[82].toFloat(), o[83].toFloat(), o[84].toFloat(), o[85].toFloat())
     }
 
     private fun cmd(type: Int, deck: Int, i0: Int = 0, i1: Int = 0, d0: Double = 0.0, d1: Double = 0.0, d2: Double = 0.0, d3: Double = 0.0) {

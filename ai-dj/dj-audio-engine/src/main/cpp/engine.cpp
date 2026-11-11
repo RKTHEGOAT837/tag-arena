@@ -587,7 +587,12 @@ void Engine::publish() {
         q[9] = d.track ? (double)d.track->frames / tsr : 0; q[10] = d.keylock; q[11] = d.pitchSemis;
         q[12] = (d.looping && d.hasGrid()) ? d.loopLen / d.beatPeriodFrames() : 0; q[13] = d.phaseErr;
         q[14] = d.volume.value; q[15] = d.useStretch;
+        double* x = o + 64 + di * 8;  // live mixer values (for the 3D console)
+        x[0] = d.paramTarget[P_EQ_LOW]; x[1] = d.paramTarget[P_EQ_MID]; x[2] = d.paramTarget[P_EQ_HIGH];
+        x[3] = d.paramTarget[P_FILTER]; x[4] = d.paramTarget[P_ECHO_MIX]; x[5] = d.paramTarget[P_REVERB_MIX];
+        x[6] = d.paramTarget[P_FLANGER_MIX]; x[7] = d.paramTarget[P_DECK_VOLUME];
     }
+    o[80] = crossfader_; o[81] = drumLevelT_; o[82] = riserLevelT_; o[83] = masterFilterT_; o[84] = masterVolT_; o[85] = duckT_;
     std::atomic_thread_fence(std::memory_order_release);
     snapSeq_.store(s + 2, std::memory_order_release);
 }
