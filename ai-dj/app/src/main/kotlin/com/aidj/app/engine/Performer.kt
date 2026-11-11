@@ -147,6 +147,9 @@ class Performer(
         val masterStart = plan.startBeatOut + offset
         if (masterStart < st.masterBeat + 0.25) return false
         native.clearAutomation()
+        // clearAutomation may have removed a live-remix layer's scheduled fade-out: silence the generators
+        // (smoothed) so nothing is left stuck; a transition that wants drums ramps them up itself from 0.
+        native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.DRUM_BASS_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f)
         native.setGrid(plan.inDeck, plan.inSyncBpm, incomingLoaded.analysis.grid.firstBeatSec)
         native.setPitch(plan.inDeck, plan.keyShift.toDouble())
         for (r in plan.ramps) native.addRamp(r, masterStart)
@@ -176,7 +179,7 @@ class Performer(
         native.pause(a.outgoing.deck)
         for (p in listOf(Param.DECK_VOLUME, Param.EQ_LOW, Param.EQ_MID, Param.EQ_HIGH)) native.setParam(p, a.incoming.deck, 1f)
         native.setParam(Param.FILTER, a.incoming.deck, 0f)
-        native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f)
+        native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.DRUM_BASS_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f)
         native.exitLoop(a.incoming.deck)
         if (!a.handedOver) handOver(a)
         finish(a)
@@ -201,7 +204,7 @@ class Performer(
         cancelPlan().let { if (!it) completeNow() }
         native.clearAutomation()
         native.pause(0); native.pause(1)
-        native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f)
+        native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.DRUM_BASS_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f)
         paused = true
         setActivity("Paused")
     }
@@ -308,6 +311,9 @@ class Performer(
                 native.addAction(com.aidj.core.planning.Action(ActionType.DRUM_PATTERN, 0, 0.0, p.id.toDouble()), start)
                 native.addRamp(Ramp(Param.DRUM_LEVEL, -1, 0.0, 1.0, 0f, level, Curve.EASE_OUT), start)
                 native.addRamp(Ramp(Param.DRUM_LEVEL, -1, len - 2, len, null, 0f, Curve.EASE_IN), start)
+                // Patterns with a BASS lane (phonk 808s, four-on-the-floor sub) get the synth bass under the kit.
+                native.addRamp(Ramp(Param.DRUM_BASS_LEVEL, -1, 0.0, 1.0, 0f, level * 0.8f, Curve.EASE_OUT), start)
+                native.addRamp(Ramp(Param.DRUM_BASS_LEVEL, -1, len - 2, len, null, 0f, Curve.EASE_IN), start)
                 setActivity("Live drums: ${p.name}")
                 setHands(HandTask.FX_BUTTONS, 4.0)
             }
@@ -339,7 +345,8 @@ class Performer(
                 setHands(HandTask.LOOP_BUTTONS, 4.0)
             }
             "stop_remix" -> {
-                native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.RISER_LEVEL, -1, 0f); native.exitLoop(c.deck)
+                native.setParam(Param.DRUM_LEVEL, -1, 0f); native.setParam(Param.DRUM_BASS_LEVEL, -1, 0f)
+                native.setParam(Param.RISER_LEVEL, -1, 0f); native.exitLoop(c.deck)
             }
         }
     }

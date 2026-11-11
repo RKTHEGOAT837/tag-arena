@@ -108,6 +108,18 @@ class VoiceAssistant(
                 val bpm = (brain.performer.live.value.masterBpm + cmd.delta).toFloat()
                 runCatching { brain.performer.setBpm(bpm, 16f) }.fold({ "Tempo to ${bpm.toInt()}." }, { it.message ?: "Can't change tempo on this track." })
             }
+            VoiceCommand.RemixNow -> {
+                val c = brain.performer.current ?: return "Nothing is playing."
+                runCatching {
+                    settings.update { it.copy(autoRemix = true) }
+                    brain.performer.remix("drum_layer", null, 0.5f + 0.4f * settings.current.remixIntensity, 16)
+                }.fold({ "Remixing it live!" }, { it.message ?: "This track's license doesn't allow remixing." })
+            }
+            VoiceCommand.RemixStop -> {
+                settings.update { it.copy(autoRemix = false) }
+                runCatching { brain.performer.remix("stop_remix", null, 0f, 1) }
+                "Okay, playing it straight."
+            }
             VoiceCommand.PowerDrop -> {
                 brain.setOverrides(TransitionOverrides(style = TransitionStyle.LOOP_ROLL_DROP, drama = 1f))
                 brain.steer(st.copy(energyDelta = (st.energyDelta + 0.15f).coerceAtMost(0.5f)))

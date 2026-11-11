@@ -202,6 +202,20 @@ class CoreLogicTest {
     }
 
     @Test
+    fun drumPatternBank() {
+        val phonk = com.aidj.core.planning.DrumPatterns.suggest(130.0, listOf("phonk"))
+        assertEquals("Phonk cowbell", phonk.name)
+        assertTrue(phonk.steps.containsKey(com.aidj.core.planning.DrumVoice.BASS))
+        assertEquals("Dhol bhangra groove", com.aidj.core.planning.DrumPatterns.suggest(95.0, listOf("hindi pop")).name)
+        assertEquals("Dhol bhangra groove", com.aidj.core.planning.DrumPatterns.suggest(100.0, listOf("punjabi")).name)
+        assertEquals("Phonk cowbell", com.aidj.core.planning.DrumPatterns.byName("phonk")!!.name)
+        // Pattern ids must be unique and fit the native bank.
+        val ids = com.aidj.core.planning.DrumPatterns.all.map { it.id }
+        assertEquals(ids.size, ids.toSet().size)
+        assertTrue(ids.all { it in 0..15 })
+    }
+
+    @Test
     fun voiceCommands() {
         assertEquals(VoiceCommand.Energy(0.2f), CommandParser.parse("Play something more energetic."))
         assertEquals(VoiceCommand.SetMode(PartyMode.BOLLYWOOD), CommandParser.parse("Switch to Bollywood."))
@@ -213,6 +227,8 @@ class CoreLogicTest {
         assertEquals(VoiceCommand.PowerDrop, CommandParser.parse("Give me a powerful drop."))
         assertEquals(VoiceCommand.CrowdPleaser, CommandParser.parse("Play something everyone can dance to."))
         assertEquals(VoiceCommand.Skip, CommandParser.parse("skip this"))
+        assertEquals(VoiceCommand.RemixNow, CommandParser.parse("remix this song"))
+        assertEquals(VoiceCommand.RemixStop, CommandParser.parse("stop remixing"))
         assertTrue(CommandParser.parse("what's the weather like") is VoiceCommand.Unknown)
     }
 

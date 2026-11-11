@@ -36,8 +36,8 @@ makes every decision and the party keeps going offline.
 
 ## Install
 
-`release/AI-DJ-1.0.1.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.0.1.apk.sha256`.
+`release/AI-DJ-1.0.2.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.0.2.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).
@@ -109,7 +109,8 @@ Formats: anything Android's MediaCodec decodes (MP3, AAC/M4A, FLAC, WAV, OGG/Opu
   disable automatic remixing. The AI re-plans immediately after any change.
 - **Voice:** tap the mic. Works offline for: energy up/down, mode/genre switches, "mix Punjabi with EDM",
   eras ("songs from the 2000s"), dramatic/smooth transitions, "powerful drop", "something everyone can
-  dance to", skip/previous/pause/resume, lock/unlock, louder/quieter, faster/slower, effects, "play <title>".
+  dance to", "remix this" / "stop remixing", skip/previous/pause/resume, lock/unlock, louder/quieter,
+  faster/slower, effects, "play <title>".
   Anything else goes to Claude when connected.
 - **Background:** a foreground media service keeps playing with the screen off; notification, lock-screen,
   headset and Bluetooth media buttons work; audio focus and "headphones unplugged" pause correctly;
@@ -208,7 +209,8 @@ Legend: ✅ implemented & verified by automated tests · 🟢 implemented, build
 | Mixing | Cue points (phrase-aligned entry cues), loops, slip loops/beat rolls, brake | ✅ |
 | Mixing | Transition styles: bass swap, filter sweep, echo out, loop roll → drop, cut, brake, drum bridge, mashup layer, crossfade | ✅ (6 executed end-to-end in tests; all 9 unit-tested) |
 | Mixing | Hot cues (user-set, per track) | ❌ (cues are chosen automatically from structure) |
-| Remix | Intro extension by looping, section extension, drum layer (6 patterns incl. dhol), riser + impact, mashup layering | ✅ |
+| Remix | Intro extension by looping, section extension, drum layer (7 patterns incl. dhol & phonk cowbell/808), riser + impact, mashup layering | ✅ |
+| Remix | Autonomous live remixing of the playing track (phrase-aligned dhol/phonk drum layers, risers into real drops, beat rolls, echo throws; flavour from tags/title/mode; licence- and intensity-aware) | 🟢 |
 | Remix | Stem separation / generative AI audio | ❌ needs on-device separation models or a paid service; not faked |
 | AI | Local decision loop: prepare next track early, plan phrase-aligned transition, execute, adapt to overrides | 🟢 (logic paths unit-tested in dj-core) |
 | AI | Claude decision layer + tool loop (validated tools, thinking blocks preserved, refusal/timeout handling) | ✅ loop · 🌐 Claude |

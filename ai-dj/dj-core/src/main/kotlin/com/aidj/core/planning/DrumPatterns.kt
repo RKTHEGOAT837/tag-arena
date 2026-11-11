@@ -45,15 +45,23 @@ object DrumPatterns {
         DrumVoice.PERC to p("x.Xx..x.x.Xx.xx."),
         DrumVoice.HAT to p("..x...x...x...x."),
     ))
+    val PHONK = Pattern(6, "Phonk cowbell", mapOf(
+        DrumVoice.KICK to p("X......X..X....."),
+        DrumVoice.CLAP to p("....X.......X..."),
+        DrumVoice.HAT to p("x.x.x.x.x.x.x.x."),
+        DrumVoice.PERC to p("X..X..X.X..X..X."),
+        DrumVoice.BASS to p("X......X..X....."),
+    ))
 
-    val all = listOf(FOUR_ON_FLOOR, BUILD_SNARE_ROLL, BHANGRA_DHOL, BREAKBEAT, HALF_TIME, TRIBAL)
+    val all = listOf(FOUR_ON_FLOOR, BUILD_SNARE_ROLL, BHANGRA_DHOL, BREAKBEAT, HALF_TIME, TRIBAL, PHONK)
     fun byName(name: String): Pattern? = all.firstOrNull { it.name.equals(name, true) || it.name.lowercase().startsWith(name.lowercase()) }
 
     /** Pattern that suits a tempo/genre context. */
     fun suggest(bpm: Double, genres: List<String>): Pattern {
         val g = genres.joinToString(" ").lowercase()
         return when {
-            "bhangra" in g || "punjabi" in g || "bollywood" in g -> BHANGRA_DHOL
+            "phonk" in g -> PHONK
+            "bhangra" in g || "punjabi" in g || "bollywood" in g || "hindi" in g || "desi" in g || "filmi" in g -> BHANGRA_DHOL
             bpm < 100 -> BREAKBEAT
             bpm > 140 -> HALF_TIME
             else -> FOUR_ON_FLOOR

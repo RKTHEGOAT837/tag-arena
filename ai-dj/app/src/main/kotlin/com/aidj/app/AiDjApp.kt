@@ -6,6 +6,7 @@ import android.util.Log
 import com.aidj.app.brain.Announcer
 import com.aidj.app.brain.ClaudeOrchestrator
 import com.aidj.app.brain.DjBrain
+import com.aidj.app.brain.LiveRemixer
 import com.aidj.app.brain.McpServer
 import com.aidj.app.data.AnalysisQueue
 import com.aidj.app.data.LibraryRepository
@@ -33,6 +34,7 @@ class AppGraph(context: Context) {
     val announcer = Announcer(context, performer, settings)
     val claude = ClaudeOrchestrator(context, brain, library, analysis, discovery, settings)
     val voice = VoiceAssistant(context, scope, brain, announcer, settings)
+    val liveRemixer = LiveRemixer(scope, performer, settings, brain)
     val mcp = McpServer(claude, { settings.mcpToken }, BuildConfig.VERSION_NAME)
 
     init {
@@ -49,6 +51,7 @@ class AppGraph(context: Context) {
         performer.start()
         performer.setMasterVolume(settings.current.masterVolume)
         brain.start()
+        liveRemixer.start()
         analysis.start()
         scope.launch {
             settings.settings.distinctUntilChangedBy { Triple(it.mcpServerEnabled, it.mcpPort, it.claudeEnabled) }.collect { s ->

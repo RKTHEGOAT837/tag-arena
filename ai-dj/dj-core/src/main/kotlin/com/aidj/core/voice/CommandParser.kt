@@ -11,6 +11,8 @@ sealed class VoiceCommand {
     data class Drama(val drama: Float) : VoiceCommand()
     data class BpmChange(val delta: Double) : VoiceCommand()
     data object PowerDrop : VoiceCommand()
+    data object RemixNow : VoiceCommand()
+    data object RemixStop : VoiceCommand()
     data object CrowdPleaser : VoiceCommand()
     data object Skip : VoiceCommand()
     data object Previous : VoiceCommand()
@@ -57,6 +59,8 @@ object CommandParser {
         if (has("resume", "continue", "unpause") || t == "play") return VoiceCommand.Resume
         if (has("unlock")) return VoiceCommand.Unlock
         if (has("lock", "keep this song", "keep playing this")) return VoiceCommand.Lock
+        if (has("stop remixing", "stop the remix", "no remix", "no remixing")) return VoiceCommand.RemixStop
+        if (has("remix", "remixing", "mashup", "mash it up")) return VoiceCommand.RemixNow
         if (has("drop")) return VoiceCommand.PowerDrop
         if (has("dramatic", "crazy", "wild transition", "big transition")) return VoiceCommand.Drama(1f)
         if (has("smooth", "smoother", "seamless")) return VoiceCommand.Drama(0.1f)
