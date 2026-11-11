@@ -1,0 +1,19 @@
+# Render blueprint for the AI DJ backend (point Render at ai-dj/backend/render.yaml).
+services:
+  - type: web
+    name: ai-dj-backend
+    runtime: node
+    rootDir: ai-dj/backend
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_TOKENS
+        sync: false
+      - key: JAMENDO_CLIENT_ID
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-opus-5-5
