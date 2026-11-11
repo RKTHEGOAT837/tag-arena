@@ -189,7 +189,7 @@ void Engine::startDeck(Deck& d, double posSec) {
     if (!d.track) return;
     double p = std::round(std::max(0.0, posSec) * d.track->sampleRate);
     d.pos = p; d.shadowPos = p; d.audible = p;
-    d.looping = false; d.ended = false; d.braking = false; d.brakeFactor = 1.0;
+    d.looping = false; d.ended = false; d.braking = false; d.brakeFactor = 1.0; d.phaseErrFilt = 0;
     d.pendingReconfig = false; d.pendingSeekPos = -1;
     d.configurePipeline();
     d.flushPipeline();
@@ -472,8 +472,16 @@ void Engine::renderChunk(float* out, int n) {
                 if (!fractionalLoop && !d.braking) {
                     double err = wrapHalf(d.beatAt(d.audible) - masterBeat_);
                     d.phaseErr = err;
+                    // WSOLA picks each segment within a ±15 ms search window, so the instantaneous position tag
+                    // jitters around the true timeline. Track the average (≈0.25 s time constant) and correct
+                    // only that, with a small deadband, instead of chasing the jitter.
+                    double a = std::min(1.0, (double)n / (0.25 * sr_));
+                    if (std::fabs(err - d.phaseErrFilt) > 0.25) d.phaseErrFilt = err;  // re-seed after a jump/seek
+                    else d.phaseErrFilt += (err - d.phaseErrFilt) * a;
+                    double e = d.phaseErrFilt;
+                    if (std::fabs(e) < 0.0015) e = 0;
                     // P-controller: nudge tempo by up to ±2% to pull the deck onto the master phase.
-                    base *= 1.0 - std::min(0.02, std::max(-0.02, err * 0.6));
+                    base *= 1.0 - std::min(0.02, std::max(-0.02, e * 0.8));
                 }
             } else {
                 base = d.userRate;
@@ -585,7 +593,7 @@ void Engine::publish() {
         q[0] = d.audible / tsr; q[1] = d.playing; q[2] = d.ended; q[3] = d.looping; q[4] = d.synced;
         q[5] = d.contentRate; q[6] = d.gridBpm * d.contentRate; q[7] = d.vu; q[8] = d.track ? d.track->id : 0;
         q[9] = d.track ? (double)d.track->frames / tsr : 0; q[10] = d.keylock; q[11] = d.pitchSemis;
-        q[12] = (d.looping && d.hasGrid()) ? d.loopLen / d.beatPeriodFrames() : 0; q[13] = d.phaseErr;
+        q[12] = (d.looping && d.hasGrid()) ? d.loopLen / d.beatPeriodFrames() : 0; q[13] = d.phaseErrFilt;
         q[14] = d.volume.value; q[15] = d.useStretch;
         double* x = o + 64 + di * 8;  // live mixer values (for the 3D console)
         x[0] = d.paramTarget[P_EQ_LOW]; x[1] = d.paramTarget[P_EQ_MID]; x[2] = d.paramTarget[P_EQ_HIGH];

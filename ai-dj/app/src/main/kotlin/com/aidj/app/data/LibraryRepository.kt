@@ -82,7 +82,7 @@ class LibraryRepository(private val context: Context) {
 
     @Synchronized
     fun recordPlay(id: String, session: String) {
-        db.execSQL("UPDATE tracks SET play_count = play_count + 1, last_played = ? WHERE id = ?", arrayOf(System.currentTimeMillis(), id))
+        db.execSQL("UPDATE tracks SET play_count = play_count + 1, last_played = ? WHERE id = ?", arrayOf<Any>(System.currentTimeMillis(), id))
         db.insert("history", null, ContentValues().apply { put("ts", System.currentTimeMillis()); put("track_id", id); put("session", session) })
         reload()
     }
@@ -91,7 +91,7 @@ class LibraryRepository(private val context: Context) {
     fun recordSkip(id: String) { db.execSQL("UPDATE tracks SET skip_count = skip_count + 1 WHERE id = ?", arrayOf(id)); reload() }
 
     @Synchronized
-    fun setLiked(id: String, liked: Boolean) { db.execSQL("UPDATE tracks SET liked = ? WHERE id = ?", arrayOf(if (liked) 1 else 0, id)); reload() }
+    fun setLiked(id: String, liked: Boolean) { db.execSQL("UPDATE tracks SET liked = ? WHERE id = ?", arrayOf<Any>(if (liked) 1 else 0, id)); reload() }
 
     @Synchronized
     fun delete(id: String) {

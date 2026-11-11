@@ -25,7 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -119,7 +119,7 @@ fun LibraryScreen(onBack: () -> Unit, onDiscover: () -> Unit) {
                         Icon(if (lt.liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Like", tint = if (lt.liked) Neon.Pink else Neon.Dim)
                     }
                     IconButton(onClick = { g.brain.enqueue(lt.track.id); msg = "Queued ${lt.track.title}" }, enabled = lt.analysis != null) {
-                        Icon(Icons.Default.PlaylistAdd, "Queue", tint = if (lt.analysis != null) Neon.Cyan else Neon.Dim)
+                        Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Queue", tint = if (lt.analysis != null) Neon.Cyan else Neon.Dim)
                     }
                     IconButton(onClick = { g.library.delete(lt.track.id) }) { Icon(Icons.Default.Delete, "Remove", tint = Neon.Dim) }
                 }

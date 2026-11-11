@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,12 +28,12 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
@@ -57,7 +56,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -164,8 +163,8 @@ fun StageScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit, onRequest
                     }
                 }
                 Visualizer(live.engine.bands, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp).padding(horizontal = 12.dp))
-                AnimatedVisibility(voice.listening || voice.partial.isNotBlank(), Modifier.align(Alignment.Center)) {
-                    Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Neon.Panel.copy(alpha = 0.9f)).border(1.dp, Neon.Pink, RoundedCornerShape(14.dp)).padding(16.dp)) {
+                if (voice.listening || voice.partial.isNotBlank()) {
+                    Box(Modifier.align(Alignment.Center).clip(RoundedCornerShape(14.dp)).background(Neon.Panel.copy(alpha = 0.9f)).border(1.dp, Neon.Pink, RoundedCornerShape(14.dp)).padding(16.dp)) {
                         Text(if (voice.partial.isBlank()) "Listening…" else voice.partial, color = Neon.Text)
                     }
                 }
@@ -224,12 +223,12 @@ fun StageScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit, onRequest
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 LabeledToggle(Icons.Default.AutoAwesome, if (aiOn) "AI DJ ON" else "AI DJ OFF", aiOn) { g.brain.aiEnabled.value = !aiOn; g.brain.replanIfNotStarted() }
                 LabeledToggle(if (locked) Icons.Default.Lock else Icons.Default.LockOpen, if (locked) "Locked" else "Lock song", locked) { if (locked) g.brain.unlock() else g.brain.locked.value = true }
-                LabeledToggle(Icons.Default.QueueMusic, "Queue", false) { sheet = "queue" }
+                LabeledToggle(Icons.AutoMirrored.Filled.QueueMusic, "Queue", false) { sheet = "queue" }
                 LabeledToggle(Icons.Default.Tune, "DJ controls", false) { sheet = "controls" }
                 LabeledToggle(Icons.Default.Celebration, "Party mode", false) { sheet = "modes" }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.VolumeUp, "Volume", tint = Neon.Dim, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.VolumeUp, "Volume", tint = Neon.Dim, modifier = Modifier.size(18.dp))
                 Slider(value = settings.masterVolume, onValueChange = { v -> g.settings.update { it.copy(masterVolume = v) }; g.performer.setMasterVolume(v) },
                     modifier = Modifier.weight(1f).padding(start = 8.dp), colors = SliderDefaults.colors(thumbColor = Neon.Cyan, activeTrackColor = Neon.Cyan))
             }

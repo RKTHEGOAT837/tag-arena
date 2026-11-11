@@ -103,6 +103,7 @@ public:
     Resampler resampler;
     bool useStretch = false;
     double contentRate = 1.0, phaseErr = 0;
+    double phaseErrFilt = 0;  // low-passed phase error (ignores WSOLA segment jitter)
     // Mixer + FX
     Smoother volume, trim;
     Eq3 eq;

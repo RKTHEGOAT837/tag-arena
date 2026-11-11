@@ -11,3 +11,8 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# Tink (security-crypto) references compile-only annotations
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-keep class com.google.crypto.tink.** { *; }
