@@ -1,0 +1,1 @@
+-keep class com.aidj.engine.NativeEngine { native <methods>; }

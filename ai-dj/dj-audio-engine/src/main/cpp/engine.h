@@ -158,6 +158,7 @@ private:
     void publish();
 
     int sr_ = 48000;
+    bool initialised_ = false;
     Deck decks_[kNumDecks];
     double masterBeat_ = 0, masterBpm_ = 120;
     int64_t framesRendered_ = 0;

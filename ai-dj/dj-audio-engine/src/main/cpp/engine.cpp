@@ -119,9 +119,23 @@ void Deck::finishReconfigure() {
 
 Engine::Engine() { setSampleRate(48000); }
 
+// Must only be called while no audio callback is running (before start / after the stream closed).
+// Preserves deck state and parameter targets so playback resumes seamlessly after a route change
+// (e.g. Bluetooth headphones at 44.1 kHz replacing the 48 kHz speaker).
 void Engine::setSampleRate(int sr) {
+    bool first = !initialised_;
+    if (!first && sr == sr_) return;
+    float saved[kNumDecks][16];
+    for (int d = 0; d < kNumDecks; ++d) std::memcpy(saved[d], decks_[d].paramTarget, sizeof(saved[d]));
     sr_ = sr;
-    for (auto& d : decks_) d.init((float)sr);
+    for (auto& d : decks_) {
+        if (first) d.init((float)sr);
+        else {
+            d.volume.setTime(0.008f, (float)sr); d.trim.setTime(0.02f, (float)sr);
+            d.eq.init((float)sr); d.filter.init((float)sr); d.echo.init((float)sr); d.flanger.init((float)sr); d.reverb.init((float)sr);
+            d.resampler.reset(); d.stretch.reset();
+        }
+    }
     masterVol_.setTime(0.02f, sr); masterVol_.reset(0.9f);
     duck_.setTime(0.12f, sr); duck_.reset(0);
     xfL_.setTime(0.01f, sr); xfL_.reset(1); xfR_.setTime(0.01f, sr); xfR_.reset(1);
@@ -138,6 +152,15 @@ void Engine::setSampleRate(int sr) {
         float f = 40.0f * std::pow(14000.0f / 40.0f, (float)b / (kNumBands - 1));
         bandFilters_[b].setBandpass((float)sr, f, 2.0f);
     }
+    if (!first) {
+        for (int d = 0; d < kNumDecks; ++d) for (int p = 0; p < 16; ++p) setParam(p, d, saved[d][p]);
+        // The volume smoother would otherwise ramp from 0.
+        for (auto& d : decks_) { d.volume.reset(d.paramTarget[P_DECK_VOLUME]); }
+        masterVol_.reset(masterVolT_); masterFilter_.knob.reset(masterFilterT_);
+        drums_.level.reset(drumLevelT_); drums_.bassLevel.reset(drumBassT_);
+        riser_.level.reset(riserLevelT_); riser_.pitch.reset(riserPitchT_);
+    }
+    initialised_ = true;
 }
 
 uint64_t Engine::push(Command c) {
