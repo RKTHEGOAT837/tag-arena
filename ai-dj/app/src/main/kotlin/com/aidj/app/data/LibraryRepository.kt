@@ -137,6 +137,49 @@ class LibraryRepository(private val context: Context) {
         return n
     }
 
+    /**
+     * Generate royalty-free demo tracks on the device (synthesised house grooves in different keys/tempos),
+     * so the party can start before the user has imported any music.
+     */
+    fun addDemoTracks(): Int {
+        val dir = java.io.File(context.filesDir, "music").apply { mkdirs() }
+        data class Spec(val title: String, val bpm: Double, val pc: Int, val minor: Boolean, val seed: Int)
+        val specs = listOf(
+            Spec("Neon Arrival", 122.0, 9, true, 11), Spec("Midnight Circuit", 124.0, 4, true, 12),
+            Spec("Golden Hour", 125.0, 0, false, 13), Spec("Pulse Drive", 126.0, 2, true, 14),
+        )
+        var n = 0
+        for (sp in specs) {
+            val id = idFor("demo:${sp.title}")
+            if (get(id) != null) continue
+            val file = java.io.File(dir, "demo_${sp.seed}.wav")
+            if (!file.exists()) {
+                val pcm = com.aidj.core.demo.DemoMusic.render(sp.bpm, sr = 44100, offsetSec = 0.1, rootPc = sp.pc, minor = sp.minor, seed = sp.seed)
+                writeWav(file, pcm, 44100)
+            }
+            upsert(Track(
+                id = id, title = sp.title, artist = "AI DJ Demo", album = "Demo set", durationMs = (java.io.File(file.path).length() - 44) / 2 * 1000 / 44100,
+                uri = Uri.fromFile(file).toString(), source = SourceType.LOCAL_FILE,
+                capabilities = SourceCapabilities.LOCAL.copy(note = "Demo track generated on this phone (royalty-free)"),
+                genres = listOf("house", "electronic", "dance"),
+            ))
+            n++
+        }
+        return n
+    }
+
+    private fun writeWav(f: java.io.File, x: FloatArray, sr: Int) {
+        val bb = java.nio.ByteBuffer.allocate(44 + x.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bb.put("RIFF".toByteArray()).putInt(36 + x.size * 2).put("WAVE".toByteArray())
+        bb.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(sr).putInt(sr * 2).putShort(2).putShort(16)
+        bb.put("data".toByteArray()).putInt(x.size * 2)
+        var peak = 1e-6f
+        for (v in x) peak = maxOf(peak, kotlin.math.abs(v))
+        val g = 0.89f / peak
+        for (v in x) bb.putShort((v * g * 32767f).toInt().coerceIn(-32767, 32767).toShort())
+        f.writeBytes(bb.array())
+    }
+
     /** Index the device's music library (MediaStore). Requires READ_MEDIA_AUDIO. */
     fun scanMediaStore(): Int {
         val projection = arrayOf(

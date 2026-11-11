@@ -80,7 +80,7 @@ class StageRenderer(private val inp: StageInputs) : GLSurfaceView.Renderer {
     private val pBufPos = ByteBuffer.allocateDirect(maxParticles * 12).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val pBufCol = ByteBuffer.allocateDirect(maxParticles * 12).order(ByteOrder.nativeOrder()).asFloatBuffer()
 
-    private val crowd = List(14) { i -> V3(-2.4f + (i % 7) * 0.8f + rnd.nextFloat() * 0.3f, 0f, 2.0f + (i / 7) * 0.55f + rnd.nextFloat() * 0.2f) }
+    private val crowd = List(14) { i -> V3(-2.6f + (i % 7) * 0.85f + rnd.nextFloat() * 0.25f, 0f, 1.25f + (i / 7) * 0.35f + rnd.nextFloat() * 0.1f) }
     private val crowdPhase = FloatArray(14) { rnd.nextFloat() }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -466,11 +466,11 @@ class StageRenderer(private val inp: StageInputs) : GLSurfaceView.Renderer {
             val ph = ((beat + crowdPhase[i] * 0.3) % 1.0).toFloat()
             val jump = if (playing) (0.04f + 0.12f * energy) * (0.5f - 0.5f * cos(2f * PI.toFloat() * ph)) else 0f
             val c = V3(0.02f, 0.02f, 0.03f)
-            val y = 1.15f + (i % 3) * 0.08f + jump
-            limb(V3(base.x, 0.0f, base.z), V3(base.x, y, base.z), 0.17f, c, 0.9f)
-            ball(V3(base.x, y + 0.2f, base.z), 0.12f, c)
+            val y = 0.55f + (i % 3) * 0.06f + jump
+            limb(V3(base.x, 0.0f, base.z), V3(base.x, y, base.z), 0.13f, c, 0.9f)
+            ball(V3(base.x, y + 0.14f, base.z), 0.09f, c)
             if (playing && energy > 0.7f && (i + floor(beat / 4).toInt()) % 3 == 0) {
-                limb(V3(base.x + 0.12f, y - 0.05f, base.z), V3(base.x + 0.2f, y + 0.45f + jump, base.z - 0.05f), 0.04f, c)
+                limb(V3(base.x + 0.1f, y - 0.05f, base.z), V3(base.x + 0.16f, y + 0.35f + jump, base.z - 0.05f), 0.03f, c)
             }
         }
     }

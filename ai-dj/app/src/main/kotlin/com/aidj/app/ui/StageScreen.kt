@@ -180,7 +180,7 @@ fun StageScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit, onRequest
                     }
                     val analysed = g.library.tracks.collectAsState().value.count { it.analysis != null }
                     val total = g.library.tracks.collectAsState().value.size
-                    if (analysed < 2) Text(if (total == 0) "Add music first: Library → Import or Discover" else "Analysing your library… ($analysed/$total ready)",
+                    if (analysed < 2) Text(if (total == 0) "No music yet: START PARTY plays generated demo tracks, or add yours in Library" else "Analysing your library… ($analysed/$total ready)",
                         color = Neon.Dim, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center).padding(top = 110.dp).clickable { onOpenLibrary() })
                 }
             }

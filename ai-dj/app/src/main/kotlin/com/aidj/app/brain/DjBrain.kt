@@ -105,6 +105,7 @@ class DjBrain(
             if (_status.value == BrainStatus.PAUSED) { performer.resume(); _status.value = BrainStatus.PLAYING; return@withLock }
             _status.value = BrainStatus.STARTING
             sessionStart = System.currentTimeMillis()
+            ensurePlayableMusic()
             val first = pickFirst()
             if (first == null) {
                 performer.setActivity("No analysed tracks yet – import music or wait for analysis")
@@ -291,6 +292,25 @@ class DjBrain(
                 delay(3000)
             }
         }
+    }
+
+    /** Make sure at least two analysed tracks exist: analyse pending imports first, else create demo tracks. */
+    private suspend fun ensurePlayableMusic() {
+        fun ready() = library.tracks.value.count { it.analysis != null }
+        if (ready() >= 2) return
+        if (library.tracks.value.none { it.analysisError == null && it.track.capabilities.analysis && it.analysis == null } ) {
+            performer.setActivity("No music yet – creating demo tracks…")
+            library.addDemoTracks()
+        }
+        // Analyse up to four pending tracks right now (the background queue continues with the rest).
+        val pending = library.tracks.value.filter { it.analysis == null && it.analysisError == null && it.track.capabilities.analysis }.take(4)
+        for ((i, lt) in pending.withIndex()) {
+            if (ready() >= 4) break
+            performer.setActivity("Analysing music ${i + 1}/${pending.size}: ${lt.track.title}")
+            analysis.analyseNow(lt.track.id)
+        }
+        if (ready() < 2) { performer.setActivity("Couldn't analyse enough tracks – creating demo tracks…"); library.addDemoTracks()
+            library.tracks.value.filter { it.analysis == null && it.track.artist == "AI DJ Demo" }.forEach { analysis.analyseNow(it.track.id) } }
     }
 
     private fun setContext() = SetContext(

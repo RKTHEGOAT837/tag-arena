@@ -9,6 +9,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -24,6 +27,9 @@ import com.aidj.app.service.PartyService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
+/** Full-screen, dark background behind the system bars, content kept clear of status/navigation bars and cutouts. */
+private fun androidx.compose.ui.Modifier.fillMaxSizeSafe() = this.fillMaxSize().background(Neon.Bg).safeDrawingPadding()
 
 class MainActivity : ComponentActivity() {
     private var pendingMic: (() -> Unit)? = null
@@ -50,6 +56,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AiDjTheme {
+              androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSizeSafe()) {
                 var screen by remember { mutableStateOf("stage") }
                 var resume by remember { mutableStateOf(saved) }
                 BackHandler(screen != "stage") { screen = if (screen == "discover") "library" else "stage" }
@@ -58,7 +65,7 @@ class MainActivity : ComponentActivity() {
                         onOpenSettings = { screen = "settings" },
                         onOpenLibrary = { screen = "library" },
                         onRequestMic = { action ->
-                            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) action()
+                            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) action()
                             else { pendingMic = action; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
                         },
                     )
@@ -74,12 +81,13 @@ class MainActivity : ComponentActivity() {
                         text = { Text("Continue from “$title”?") },
                         confirmButton = { TextButton(onClick = {
                             resume = null
-                            ContextCompat.startForegroundService(this, Intent(this, PartyService::class.java).setAction(PartyService.ACTION_FOREGROUND))
+                            ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, PartyService::class.java).setAction(PartyService.ACTION_FOREGROUND))
                             graph.brain.resumeSession(s.trackId, s.positionSec)
                         }) { Text("Resume") } },
                         dismissButton = { TextButton(onClick = { resume = null; graph.settings.clearSession() }) { Text("No") } },
                     )
                 }
+              }
             }
         }
     }
