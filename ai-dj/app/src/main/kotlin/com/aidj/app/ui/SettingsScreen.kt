@@ -167,6 +167,13 @@ fun SettingsScreen(onBack: () -> Unit, onLibrary: () -> Unit) {
                 Text("$tasteCount taste entries · top artists: $top", color = Neon.Text, fontSize = 12.sp)
             }
 
+            SectionTitle("Gemini (direct, free tier)")
+            var geminiKey by remember { mutableStateOf(g.settings.geminiApiKey) }
+            Text("With your own Gemini API key the phone talks to Gemini directly – no backend needed. Key is stored encrypted on this phone.", color = Neon.Dim, fontSize = 12.sp)
+            OutlinedTextField(geminiKey, { geminiKey = it; g.settings.geminiApiKey = it }, label = { Text("Gemini API key") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            if (geminiKey.isNotBlank()) Text("Active: Gemini ${com.aidj.app.brain.ClaudeOrchestrator.GEMINI_MODEL} is the cloud brain", color = Neon.Lime, fontSize = 12.sp)
+
             SectionTitle("Cloud AI brain (Claude or Gemini, via your backend)")
             SwitchRow("Use the cloud AI for decisions & requests", s.claudeEnabled) { v -> upd { it.copy(claudeEnabled = v) } }
             Text("The backend holds the API key (Anthropic, or a free-tier Google Gemini key with LLM_PROVIDER=gemini) — it never ships in the app. Without a backend the local AI DJ still runs everything.",

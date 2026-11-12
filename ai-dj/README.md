@@ -34,6 +34,14 @@ makes every decision and the party keeps going offline.
 
 ---
 
+## Cheapest cloud brain: Gemini direct (no backend)
+
+Settings → **Gemini (direct, free tier)** → paste your own Google AI Studio API key. The phone then calls
+Gemini (`gemini-2.5-flash`) itself — no server to run. The key is stored Keystore-encrypted on the phone.
+Verified live: Gemini drives the DJ tools correctly through the same validated tool loop (see
+`GeminiLiveTest`, which runs only when `GEMINI_API_KEY` is set). Trade-off vs. the backend route: the key
+lives on the device rather than on a server, which is fine for a personal phone.
+
 ## Phone-only setup (no computer needed)
 
 1. Install the APK and add music — the local AI runs the whole party with no accounts and no cost.
@@ -51,8 +59,8 @@ makes every decision and the party keeps going offline.
 
 ## Install
 
-`release/AI-DJ-1.0.4.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.0.4.apk.sha256`.
+`release/AI-DJ-1.0.5.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.0.5.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).
@@ -260,6 +268,7 @@ Legend: ✅ implemented & verified by automated tests · 🟢 implemented, build
 | AI | Local decision loop: prepare next track early, plan phrase-aligned transition, execute, adapt to overrides | 🟢 (logic paths unit-tested in dj-core) |
 | AI | Claude decision layer + tool loop (validated tools, thinking blocks preserved, refusal/timeout handling) | ✅ loop · 🌐 Claude |
 | AI | Gemini provider on the backend (Messages-API ⇄ functionCall translation, free tier) | ✅ translation tested · 🌐 Gemini key |
+| AI | Gemini direct mode in the app (no backend) | ✅ live-tested against the real Gemini API · 🌐 your key |
 | AI | Works offline / survives Claude failures (timeouts, backoff, local fallback) | 🟢 |
 | MCP | Tool registry + JSON-RPC protocol | ✅ · LAN HTTP server 🟢 |
 | Backend | Key custody, device tokens, validation, rate limiting, Jamendo proxy, official SDK | ✅ |

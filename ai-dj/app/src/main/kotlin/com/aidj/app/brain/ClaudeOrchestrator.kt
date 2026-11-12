@@ -33,6 +33,8 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import okhttp3.MediaType.Companion.toMediaType
@@ -55,6 +57,7 @@ class ClaudeOrchestrator(
     private val discovery: Discovery,
     private val settings: SettingsStore,
 ) : DjController {
+    companion object { const val GEMINI_MODEL = "gemini-2.5-flash" }
     var taste: com.aidj.app.data.TasteStore? = null
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).callTimeout(100, TimeUnit.SECONDS).build()
@@ -66,6 +69,7 @@ class ClaudeOrchestrator(
         private set
 
     private val transport = ClaudeTransport { request ->
+        if (settings.geminiApiKey.isNotBlank()) return@ClaudeTransport gemini(request)
         val s = settings.current
         val url = s.backendUrl.trimEnd('/') + "/v1/claude/messages"
         val req = Request.Builder().url(url)
@@ -76,6 +80,34 @@ class ClaudeOrchestrator(
             val body = r.body?.string().orEmpty()
             if (!r.isSuccessful) throw ClaudeUnavailable("Backend HTTP ${r.code}: ${body.take(200)}")
             json.parseToJsonElement(body).jsonObject
+        }
+    }
+
+    /** Direct mode: the phone calls Google Gemini itself with the user's own key (no backend needed). */
+    private fun gemini(request: JsonObject): JsonObject {
+        val decision = request["purpose"]?.jsonPrimitive?.content == "decision"
+        val body = com.aidj.core.ai.GeminiTranslator.request(
+            request["system"]!!.jsonPrimitive.content, request["messages"]!!.jsonArray, request["tools"]!!.jsonArray,
+            if (decision) 2000 else 4000,
+        )
+        val model = GEMINI_MODEL
+        val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+            .header("x-goog-api-key", settings.geminiApiKey)
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        http.newCall(req).execute().use { r ->
+            val text = r.body?.string().orEmpty()
+            val parsed = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+            if (!r.isSuccessful) {
+                val msg = parsed?.get("error")?.jsonObject?.get("message")?.jsonPrimitive?.content ?: text.take(200)
+                throw ClaudeUnavailable(when (r.code) {
+                    400 -> if ("API key" in msg) "Gemini rejected the API key" else "Gemini error: $msg"
+                    401, 403 -> "Gemini rejected the API key"
+                    429 -> "Gemini free-tier quota reached – using the local AI for now"
+                    else -> "Gemini HTTP ${r.code}: $msg"
+                })
+            }
+            return com.aidj.core.ai.GeminiTranslator.response(parsed ?: throw ClaudeUnavailable("Bad Gemini response"), model)
         }
     }
 
@@ -92,7 +124,8 @@ class ClaudeOrchestrator(
         }
     }
 
-    fun isConfigured(): Boolean = settings.current.backendUrl.isNotBlank() && settings.backendToken.isNotBlank()
+    fun isConfigured(): Boolean = settings.geminiApiKey.isNotBlank() ||
+        (settings.current.backendUrl.isNotBlank() && settings.backendToken.isNotBlank())
 
     fun isUsable(): Boolean = settings.current.claudeEnabled && isConfigured() && isOnline() && System.currentTimeMillis() >= backoffUntil
 

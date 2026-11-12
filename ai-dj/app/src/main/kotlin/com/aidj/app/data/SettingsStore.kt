@@ -92,6 +92,16 @@ class SettingsStore(context: Context) {
         get() = secrets.getString("backend_token", "") ?: ""
         set(v) { secrets.edit().putString("backend_token", v.trim()).apply() }
 
+    /**
+     * The user's own Google Gemini API key for direct mode (the phone calls Gemini itself).
+     * Stored Keystore-encrypted. A personal build may preseed it via -PaidjGeminiKey (never committed).
+     */
+    var geminiApiKey: String
+        get() = secrets.getString("gemini_key", null) ?: BuildConfig.DEFAULT_GEMINI_KEY.also {
+            if (it.isNotBlank()) secrets.edit().putString("gemini_key", it).apply()
+        }
+        set(v) { secrets.edit().putString("gemini_key", v.trim()).apply() }
+
     /** Spotify developer Client ID (the user's own; free). Not strictly secret but kept with the tokens. */
     var spotifyClientId: String
         get() = secrets.getString("spotify_client_id", "") ?: ""

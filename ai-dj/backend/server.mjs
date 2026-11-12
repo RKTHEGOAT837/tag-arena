@@ -38,7 +38,7 @@ export function schemaToGemini(s) {
   const out = {};
   if (s.type) out.type = String(s.type).toUpperCase();
   if (s.description) out.description = s.description;
-  if (s.enum) out.enum = s.enum;
+  if (s.enum) { const e = s.enum.filter((v) => v !== ""); if (e.length) out.enum = e; } // Gemini rejects empty enum values
   if (s.minimum !== undefined) out.minimum = s.minimum;
   if (s.maximum !== undefined) out.maximum = s.maximum;
   if (s.items) out.items = schemaToGemini(s.items);

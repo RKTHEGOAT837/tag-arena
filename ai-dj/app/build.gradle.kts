@@ -13,11 +13,13 @@ android {
         applicationId = "com.aidj.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         // Default backend URL can be set at build time: ./gradlew assembleRelease -PaidjBackendUrl=https://...
         buildConfigField("String", "DEFAULT_BACKEND_URL", "\"${project.findProperty("aidjBackendUrl") ?: ""}\"")
+        // Personal builds only: preseed the user's Gemini key (-PaidjGeminiKey=...). Never set in committed config.
+        buildConfigField("String", "DEFAULT_GEMINI_KEY", "\"${project.findProperty("aidjGeminiKey") ?: ""}\"")
     }
 
     signingConfigs {
