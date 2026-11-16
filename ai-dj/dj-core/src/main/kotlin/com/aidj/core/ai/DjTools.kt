@@ -60,7 +60,7 @@ object DjTools {
         ToolDef("search_music", "Search the local library or a licensed online catalogue (Jamendo / Internet Archive, Creative Commons) for tracks. Online results include license and what the app may do with them.",
             objectSchema {
                 string("query", "Free text: artist, title, genre or mood")
-                string("source", "Where to search", enum = listOf("library", "jamendo", "internet_archive"))
+                string("source", "Where to search: library (on the phone), all (every online provider), or one provider", enum = listOf("library", "all", "audius", "youtube", "jamendo", "internet_archive"))
                 integer("limit", "Max results", 1, 25)
             }) { c, a -> c.searchMusic(a.str("query")!!, a.str("source")!!, a.num("limit")!!.toInt()) },
         ToolDef("get_track_metadata", "Metadata, source license and capabilities (playback/processing/remix) for a library track.",

@@ -117,6 +117,11 @@ class SettingsStore(context: Context) {
         get() = secrets.getString("spotify_verifier", "") ?: ""
         set(v) { secrets.edit().putString("spotify_verifier", v).apply() }
 
+    /** The user's own YouTube Data API v3 key (search only; playback uses YouTube's official embed). */
+    var youtubeApiKey: String
+        get() = secrets.getString("youtube_key", "") ?: ""
+        set(v) { secrets.edit().putString("youtube_key", v.trim()).apply() }
+
     /** Optional personal Jamendo client id (otherwise the backend proxies Jamendo with its own). */
     var jamendoClientId: String
         get() = secrets.getString("jamendo_client_id", "") ?: ""

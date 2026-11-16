@@ -97,7 +97,11 @@ class PartyService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         MediaButtonReceiver.handleIntent(session, intent)
         when (intent?.action) {
-            ACTION_START_PARTY -> { goForeground(); if (requestFocus()) graph.brain.startParty() }
+            ACTION_START_PARTY -> {
+                goForeground()
+                if (requestFocus()) graph.brain.startParty()
+                else graph.performer.setActivity("Android didn't give AI DJ the audio (a call or another app has it) – try again when it's free")
+            }
             ACTION_FOREGROUND -> goForeground()
         }
         return START_STICKY

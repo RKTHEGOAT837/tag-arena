@@ -13,8 +13,8 @@ android {
         applicationId = "com.aidj.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.1.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         // Default backend URL can be set at build time: ./gradlew assembleRelease -PaidjBackendUrl=https://...
         buildConfigField("String", "DEFAULT_BACKEND_URL", "\"${project.findProperty("aidjBackendUrl") ?: ""}\"")
@@ -81,6 +81,10 @@ dependencies {
     implementation("androidx.security:security-crypto:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Production playback: streaming, queue, media session, notification, audio focus, Bluetooth/headset.
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-session:1.5.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
 
     testImplementation("junit:junit:4.13.2")
 }

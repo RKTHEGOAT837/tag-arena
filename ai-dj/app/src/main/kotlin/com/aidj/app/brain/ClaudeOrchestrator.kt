@@ -59,6 +59,9 @@ class ClaudeOrchestrator(
 ) : DjController {
     companion object { const val GEMINI_MODEL = "gemini-2.5-flash" }
     var taste: com.aidj.app.data.TasteStore? = null
+    var catalog: com.aidj.core.providers.MusicCatalog? = null
+    var player: com.aidj.app.playback.PlayerHub? = null
+    private val catalogCache = java.util.concurrent.ConcurrentHashMap<String, com.aidj.core.model.Track>()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).callTimeout(100, TimeUnit.SECONDS).build()
     private val performer get() = brain.performer
@@ -218,33 +221,37 @@ class ClaudeOrchestrator(
     private fun analysed(id: String): TrackAnalysis = need(id).analysis ?: runBlocking { analysis.analyseNow(id) } ?: throw ToolFailure("Track could not be analysed")
     private fun wrap(block: () -> JsonElement): JsonElement = try { block() } catch (e: CapabilityException) { throw ToolFailure(e.message ?: "not permitted") }
 
-    override fun searchMusic(query: String, source: String, limit: Int): JsonElement = when (source) {
-        "library" -> {
+    override fun searchMusic(query: String, source: String, limit: Int): JsonElement {
+        if (source == "library") {
             val q = query.lowercase().split(' ').filter { it.isNotBlank() }
             val hits = library.tracks.value.filter { lt ->
                 val hay = (lt.track.title + " " + lt.track.artist + " " + lt.track.album + " " + lt.track.genres.joinToString(" ") + " " + (lt.track.year ?: "")).lowercase()
                 q.all { it in hay }
             }.take(limit)
-            buildJsonObject { putJsonArray("results") { hits.forEach { add(trackSummary(it)) } } }
+            return buildJsonObject { putJsonArray("results") { hits.forEach { add(trackSummary(it)) } } }
         }
-        else -> {
-            if (!isOnline()) throw ToolFailure("Offline")
-            val type = if (source == "jamendo") SourceType.JAMENDO else SourceType.INTERNET_ARCHIVE
-            val res = try { runBlocking { discovery.search(query, type, limit) } } catch (e: IOException) { throw ToolFailure(e.message ?: "search failed") }
-            buildJsonObject {
-                put("note", "Online results must be downloaded before they can play. Pass id to select_next_track to download+queue it (only if download_allowed).")
-                putJsonArray("results") {
-                    res.forEach { t ->
-                        val key = "${t.source.name.lowercase()}:${t.sourceId}"
-                        searchCache[key] = t
-                        addJsonObject {
-                            put("id", key); put("title", t.title); put("artist", t.artist); put("genres", buildJsonArray { t.genres.take(4).forEach { add(it) } })
-                            put("license", t.licenseName); put("download_allowed", t.downloadAllowed)
-                            put("remix_allowed", t.capabilities.remix); put("in_library", library.get(t.libraryId) != null)
-                        }
+        if (!isOnline()) throw ToolFailure("Offline")
+        val cat = catalog ?: throw ToolFailure("Online catalogue unavailable")
+        val only = when (source) {
+            "audius" -> setOf(SourceType.AUDIUS); "youtube" -> setOf(SourceType.YOUTUBE)
+            "jamendo" -> setOf(SourceType.JAMENDO); "internet_archive" -> setOf(SourceType.INTERNET_ARCHIVE)
+            else -> null
+        }
+        val res = cat.search(query, limit.coerceIn(1, 15), only)
+        return buildJsonObject {
+            put("note", "Pass an id to select_next_track to queue it. dj_mixable=false tracks (YouTube) can only be played in player mode.")
+            putJsonArray("results") {
+                res.tracks.take(limit).forEach { t ->
+                    catalogCache[t.id] = t
+                    addJsonObject {
+                        put("id", t.id); put("title", t.title); put("artist", t.artist); put("source", t.source.name.lowercase())
+                        put("duration_s", t.durationMs / 1000); put("genres", buildJsonArray { t.genres.take(4).forEach { add(it) } })
+                        t.bpmHint?.let { put("bpm", it) }; t.keyHint?.let { put("key", it) }
+                        put("dj_mixable", t.djDecodable); put("tempo_fx_allowed", t.capabilities.processing)
                     }
                 }
             }
+            if (res.errors.isNotEmpty()) put("provider_errors", buildJsonObject { res.errors.forEach { (k, v) -> put(k, v) } })
         }
     }
 
@@ -305,17 +312,19 @@ class ClaudeOrchestrator(
             brain.steering.value = brain.steering.value.copy(genres = genres.ifEmpty { brain.steering.value.genres },
                 energyDelta = energyDelta?.toFloat() ?: brain.steering.value.energyDelta, note = reason)
         }
-        var id = trackId
-        if (id != null && (id.startsWith("jamendo:") || id.startsWith("internet_archive:"))) {
-            val t = searchCache[id] ?: throw ToolFailure("Search for the track first")
-            if (!t.downloadAllowed) throw ToolFailure("That track may not be downloaded")
-            id = library.get(t.libraryId)?.track?.id ?: runBlocking { discovery.download(t) {} }.id
-            runBlocking { analysis.analyseNow(id) } ?: throw ToolFailure("Downloaded but analysis failed")
+        val id = trackId
+        if (id != null && library.get(id) == null) {
+            val t = catalogCache[id] ?: throw ToolFailure("Unknown track id – search_music first and use an id from its results")
+            library.remember(t)
         }
         if (id != null) {
             val lt = need(id)
-            if (lt.analysis == null) runBlocking { analysis.analyseNow(id) } ?: throw ToolFailure("Track could not be analysed")
+            if (purpose.get() != "decision") {
+                // A user request: put it in the shared queue so it shows up and plays next (player or DJ mode).
+                player?.let { hub -> android.os.Handler(android.os.Looper.getMainLooper()).post { hub.addNext(lt.track) } }
+            }
             if (!settings.current.allowExplicit && lt.track.explicit) throw ToolFailure("Explicit tracks are disabled")
+            if (!lt.track.djDecodable) return DjTools.ok("queued" to lt.track.displayName, "note" to "YouTube track: plays in player mode only, the DJ can't mix it")
             brain.claudeSelected(id, reason, fromDecision = purpose.get() == "decision")
             return DjTools.ok("queued" to lt.track.displayName, "reason" to reason)
         }

@@ -52,8 +52,11 @@ class AnalysisQueue(private val context: Context, private val library: LibraryRe
         }
     }
 
+    // Background analysis only for files on the phone: streams are analysed when the DJ actually loads them
+    // (one download, not two), and embedded-player tracks can't be decoded at all.
     private fun nextPending(): String? = library.tracks.value.firstOrNull {
-        it.analysis == null && it.analysisError == null && it.track.capabilities.analysis
+        it.analysis == null && it.analysisError == null && it.track.capabilities.analysis &&
+            it.track.playback == com.aidj.core.model.PlaybackType.LOCAL_FILE
     }?.track?.id
 
     /** Analyse now (or return cached). */
@@ -73,10 +76,11 @@ class AnalysisQueue(private val context: Context, private val library: LibraryRe
         _progress.value = Progress(id, lt.track.title, 0f, remaining)
         val result = try {
             if (!lt.track.capabilities.analysis) throw IllegalStateException("Source does not permit analysis")
+            if (lt.track.isEmbedded) throw IllegalStateException("Embedded-player tracks can't be analysed")
             val dec = decoder.decode(Uri.parse(lt.track.uri), engine = null, wantAnalysis = true,
                 progress = { _progress.value = _progress.value.copy(fraction = it * 0.5f) })
             val mono = dec.analysisMono ?: throw IllegalStateException("No audio")
-            val a = analyzer.analyze(mono, dec.analysisRate) { _progress.value = _progress.value.copy(fraction = 0.5f + it * 0.5f) }
+            val a = analyzer.analyze(mono, dec.analysisRate, bpmHint = lt.track.bpmHint, keyHint = lt.track.keyHint) { _progress.value = _progress.value.copy(fraction = 0.5f + it * 0.5f) }
             library.saveAnalysis(id, a, null)
             a
         } catch (e: Throwable) {

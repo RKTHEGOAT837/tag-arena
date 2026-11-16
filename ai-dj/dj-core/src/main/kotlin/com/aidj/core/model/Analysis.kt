@@ -30,10 +30,13 @@ data class MusicalKey(val pitchClass: Int, val minor: Boolean) {
                 val pc = table.indexOf(n)
                 return if (pc >= 0) MusicalKey(pc, minor) else null
             }
-            val m = Regex("""^([A-Ga-g])([#b]?)\s*(m|min|minor|maj|major)?$""").matchEntire(t) ?: return null
+            // Accept "C#m", "Db major", "E flat minor", "F sharp minor", "Bb min".
+            val norm = t.replace(Regex("\\s+flat", RegexOption.IGNORE_CASE), "b").replace(Regex("\\s+sharp", RegexOption.IGNORE_CASE), "#")
+            val m = Regex("""^([A-Ga-g])([#b]?)\s*(m|min|minor|maj|major)?$""", RegexOption.IGNORE_CASE).matchEntire(norm) ?: return null
             var pc = NAMES.indexOf(m.groupValues[1].uppercase())
             if (m.groupValues[2] == "#") pc += 1 else if (m.groupValues[2] == "b") pc -= 1
-            val minor = m.groupValues[3].startsWith("m") && !m.groupValues[3].startsWith("maj")
+            val q = m.groupValues[3].lowercase()
+            val minor = q.startsWith("m") && !q.startsWith("maj")
             return MusicalKey(pc.mod(12), minor)
         }
     }

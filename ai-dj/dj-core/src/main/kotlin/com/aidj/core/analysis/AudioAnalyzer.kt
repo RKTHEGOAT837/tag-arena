@@ -47,7 +47,11 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val chroma: FloatArray,
     )
 
-    fun analyze(samples: FloatArray, sampleRate: Int, progress: (Float) -> Unit = {}): TrackAnalysis {
+    /**
+     * @param bpmHint provider-supplied tempo (e.g. Audius metadata). Used as a second starting point for the
+     *   beat-grid fit; whichever tempo the actual audio supports better wins, so a wrong hint can't force a bad grid.
+     */
+    fun analyze(samples: FloatArray, sampleRate: Int, bpmHint: Double? = null, keyHint: String? = null, progress: (Float) -> Unit = {}): TrackAnalysis {
         require(sampleRate in 8000..96000) { "Unsupported sample rate $sampleRate" }
         val duration = samples.size.toDouble() / sampleRate
         require(duration >= 8.0) { "Track too short to analyse (${"%.1f".format(duration)} s)" }
@@ -57,10 +61,27 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val beatEnv = combinedBeatEnvelope(f)
         val bpm0 = estimateTempo(beatEnv, f.fps)
         progress(0.5f)
-        val gridNoDownbeat = fitGrid(beatEnv, f.fps, bpm0)
+        val own = fitGridScored(beatEnv, f.fps, bpm0)
+        val gridNoDownbeat = if (bpmHint != null && bpmHint in 40.0..250.0) {
+            // Fold the hint into our tempo range, fit a grid there, and keep it unless our own estimate
+            // explains the onsets clearly better (a plainly wrong hint loses).
+            var h = bpmHint
+            while (h < minBpm) h *= 2
+            while (h > maxBpm) h /= 2
+            val hinted = fitGridScored(beatEnv, f.fps, h)
+            // A half-tempo grid lands only on the (stronger) even beats, so it always scores higher per beat;
+            // when the hint is an octave of our estimate, accept it with a looser margin.
+            val ratio = hinted.first.bpm / own.first.bpm
+            val octave = kotlin.math.abs(ratio - 2.0) < 0.06 || kotlin.math.abs(ratio - 0.5) < 0.015
+            val margin = if (octave) 0.55 else 0.85
+            if (hinted.second >= own.second * margin) hinted.first else own.first
+        } else own.first
         val grid = gridNoDownbeat.copy(downbeatPhase = findDownbeatPhase(f, gridNoDownbeat, duration))
         progress(0.6f)
-        val (key, keyConf) = detectKey(samples, sampleRate)
+        val (ownKey, ownConf) = detectKey(samples, sampleRate)
+        // Provider key metadata wins when our chroma estimate is unsure (real mixes with heavy drums often are).
+        val hinted = keyHint?.let { MusicalKey.parse(it) }
+        val (key, keyConf) = if (hinted != null && ownConf < 0.6f && hinted != ownKey) hinted to 0.6f else ownKey to ownConf
         progress(0.85f)
 
         val bars = barFeatures(f, grid, duration)
@@ -255,7 +276,10 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         return if (n == 0) 0.0 else s / n
     }
 
-    fun fitGrid(env: FloatArray, fps: Double, bpm0: Double): BeatGrid {
+    fun fitGrid(env: FloatArray, fps: Double, bpm0: Double): BeatGrid = fitGridScored(env, fps, bpm0).first
+
+    /** Grid fit plus its raw onset-alignment score (comparable between tempo candidates on the same track). */
+    fun fitGridScored(env: FloatArray, fps: Double, bpm0: Double): Pair<BeatGrid, Double> {
         val smooth = FloatArray(env.size) { i ->
             val a = env.getOrElse(i - 1) { 0f }; val b = env[i]; val c = env.getOrElse(i + 1) { 0f }
             0.25f * a + 0.5f * b + 0.25f * c
@@ -309,7 +333,7 @@ class AudioAnalyzer(private val minBpm: Double = 70.0, private val maxBpm: Doubl
         val period = 60.0 / bestBpm
         var first = bestPhase + latency
         while (first - period >= 0) first -= period
-        return BeatGrid(bpm = bestBpm, firstBeatSec = first, downbeatPhase = 0, confidence = conf)
+        return BeatGrid(bpm = bestBpm, firstBeatSec = first, downbeatPhase = 0, confidence = conf) to bestScore
     }
 
     fun findDownbeatPhase(f: Features, grid: BeatGrid, duration: Double): Int {

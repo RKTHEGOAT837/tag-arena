@@ -84,9 +84,36 @@ class Performer(
 
     fun loadedOn(deck: Int): Loaded? = loaded[deck]
 
+    /** Non-null when the audio output isn't running (shown on the AI DJ screen and in diagnostics). */
+    val engineError = MutableStateFlow<String?>(null)
+    @Volatile private var lastWatchdog = 0L
+
     fun start() {
-        native.start()
+        scope.launch(Dispatchers.Default) {
+            // Previously the result of start() was ignored: if the output stream failed to open, nothing played
+            // and nothing said why. Retry with backoff and surface the problem.
+            var attempt = 0
+            while (!native.start()) {
+                attempt++
+                engineError.value = "DJ audio output failed to start (attempt $attempt) – retrying"
+                Log.e("Performer", engineError.value!!)
+                delay(1500L * minOf(attempt, 6))
+            }
+            engineError.value = null
+        }
         scope.launch(Dispatchers.Default) { pollLoop() }
+    }
+
+    /** Watchdog: if the output stream died (e.g. a failed Bluetooth re-route), reopen it. */
+    private fun watchdog() {
+        val now = System.currentTimeMillis()
+        if (now - lastWatchdog < 2000) return
+        lastWatchdog = now
+        if (!native.isRunning) {
+            val ok = native.start()
+            engineError.value = if (ok) null else "DJ audio output stopped – trying to reopen it"
+            if (!ok) Log.e("Performer", "audio stream not running; restart failed")
+        } else if (engineError.value != null) engineError.value = null
     }
 
     // ------------------------------------------------------------------ loading
@@ -96,12 +123,13 @@ class Performer(
         withContext(Dispatchers.IO) {
             val caps = lt.track.capabilities
             if (!caps.playback) throw CapabilityException("This source does not permit playback")
+            if (!lt.track.djDecodable) throw CapabilityException("${lt.track.source.name.lowercase()} tracks play only in their own player and can't be mixed")
             setActivity("Loading ${lt.track.title}")
             val dec = decoder.decode(Uri.parse(lt.track.uri), native, wantAnalysis = lt.analysis == null && caps.analysis)
             val handle = dec.handle ?: throw IllegalStateException("No audio decoded")
             val analysis = lt.analysis ?: dec.analysisMono?.let { mono ->
                 setActivity("Analysing ${lt.track.title}")
-                analyzer.analyze(mono, dec.analysisRate).also { analysisQueue.store(lt.track.id, it) }
+                analyzer.analyze(mono, dec.analysisRate, bpmHint = lt.track.bpmHint, keyHint = lt.track.keyHint).also { analysisQueue.store(lt.track.id, it) }
             } ?: throw CapabilityException("Track has no analysis")
             val old = loaded[deck]
             native.unload(deck)
@@ -379,6 +407,7 @@ class Performer(
     }
 
     private fun tick() {
+        watchdog()
         val st = native.readState()
         native.collectGarbage()
         val a = active

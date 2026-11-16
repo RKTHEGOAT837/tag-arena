@@ -29,6 +29,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
+const val DEMO_ARTIST = "AI DJ Demo"
+
 enum class BrainStatus { IDLE, STARTING, PLAYING, PAUSED }
 enum class AiState(val label: String) { OFF("AI off"), LOCAL("Local AI"), THINKING("Cloud AI thinking"), CLAUDE("Cloud AI ready"), OFFLINE("Offline – local AI"), ERROR("Cloud AI unavailable – local AI") }
 
@@ -54,6 +56,10 @@ class DjBrain(
     var claude: ClaudeOrchestrator? = null
     var announcer: Announcer? = null
     var taste: com.aidj.app.data.TasteStore? = null
+    /** Shared play queue (search results the user queued) — the DJ plays from it first. */
+    var player: com.aidj.app.playback.PlayerHub? = null
+    /** Online catalogue (Audius, Jamendo, Internet Archive…) the DJ can pick from when the queue runs dry. */
+    var catalog: com.aidj.core.providers.MusicCatalog? = null
 
     val sessionId = UUID.randomUUID().toString()
     private var sessionStart = 0L
@@ -88,6 +94,25 @@ class DjBrain(
         scope.launch(Dispatchers.Default) {
             performer.events.collect { onEvent(it) }
         }
+        // Mirror the shared queue's upcoming mixable tracks into the DJ's request list.
+        player?.let { hub ->
+            scope.launch(Dispatchers.Default) {
+                kotlinx.coroutines.flow.combine(hub.queue, hub.index) { q, i -> q.drop(i + 1) }.collect { upcoming ->
+                    manualQueue.value = upcoming.filter { it.track.djDecodable && it.error == null }.map { it.track.id }
+                    if (_status.value == BrainStatus.PLAYING) replanIfNotStartedQuietly()
+                }
+            }
+            // Feed DJ playback state to the mini-player.
+            scope.launch(Dispatchers.Default) {
+                performer.live.collect { l ->
+                    if (_status.value == BrainStatus.PLAYING || _status.value == BrainStatus.PAUSED) {
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            hub.publishDj(_status.value == BrainStatus.PLAYING, (l.positionSec * 1000).toLong(), (l.durationSec * 1000).toLong())
+                        }
+                    }
+                }
+            }
+        }
         scope.launch(Dispatchers.Default) {
             while (isActive) {
                 try { tick() } catch (e: Exception) { Log.e("DjBrain", "tick", e) }
@@ -106,6 +131,16 @@ class DjBrain(
             if (_status.value == BrainStatus.PAUSED) { performer.resume(); _status.value = BrainStatus.PLAYING; return@withLock }
             _status.value = BrainStatus.STARTING
             sessionStart = System.currentTimeMillis()
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                player?.enterDjMode()
+                player?.djHandler = { cmd ->
+                    when (cmd) {
+                        "toggle" -> togglePlay(); "play" -> resume(); "pause" -> pause()
+                        "next" -> skip(); "previous" -> previous()
+                        else -> if (cmd.startsWith("mix:")) mixNow(cmd.removePrefix("mix:"))
+                    }
+                }
+            }
             ensurePlayableMusic()
             val first = pickFirst()
             if (first == null) {
@@ -146,7 +181,10 @@ class DjBrain(
 
     fun togglePlay() = if (_status.value == BrainStatus.PLAYING) pause() else resume()
 
-    fun stopParty() { choosing?.cancel(); performer.stopAll(); _status.value = BrainStatus.IDLE; settings.clearSession() }
+    fun stopParty() {
+        choosing?.cancel(); performer.stopAll(); _status.value = BrainStatus.IDLE; settings.clearSession()
+        scope.launch(Dispatchers.Main) { player?.exitDjMode() }
+    }
 
     /** Skip: mix into the next track as soon as musically sensible (next phrase/bar). */
     fun skip() = scope.launch(Dispatchers.Default) {
@@ -167,11 +205,23 @@ class DjBrain(
 
     /** Play a specific track next, right away. */
     fun playNext(trackId: String) {
+        val t = library.get(trackId)?.track
+        if (t != null && player != null) scope.launch(Dispatchers.Main) { player?.addNext(t) }
         manualQueue.value = listOf(trackId) + manualQueue.value.filter { it != trackId }
         skip()
     }
 
-    fun enqueue(trackId: String) { manualQueue.value = manualQueue.value.filter { it != trackId } + trackId; replanIfNotStarted() }
+    /** Mix [trackId] in as soon as musically sensible (it's already in the shared queue). */
+    fun mixNow(trackId: String) {
+        manualQueue.value = listOf(trackId) + manualQueue.value.filter { it != trackId }
+        skip()
+    }
+
+    fun enqueue(trackId: String) {
+        val t = library.get(trackId)?.track
+        if (t != null && player != null) { scope.launch(Dispatchers.Main) { player?.addToQueue(t) }; return }
+        manualQueue.value = manualQueue.value.filter { it != trackId } + trackId; replanIfNotStarted()
+    }
     fun dequeue(trackId: String) { manualQueue.value = manualQueue.value.filter { it != trackId } }
 
     fun setMode(mode: PartyMode, custom: List<String> = settings.current.customGenres) {
@@ -183,6 +233,16 @@ class DjBrain(
 
     fun steer(s: SelectionSteering) { steering.value = s; replanIfNotStarted() }
     fun setOverrides(o: TransitionOverrides) { overrides.value = o; replanIfNotStarted(keepTrack = true) }
+
+    private var lastQueueSignature = ""
+    /** Called when the shared queue changes: re-plan only if the next mixable track actually changed. */
+    private fun replanIfNotStartedQuietly() {
+        val sig = manualQueue.value.firstOrNull().orEmpty()
+        if (sig == lastQueueSignature) return
+        lastQueueSignature = sig
+        val planned = performer.incoming?.track?.track?.id
+        if (sig.isNotEmpty() && planned != null && planned != sig) replanIfNotStarted()
+    }
 
     /** Re-choose / re-plan the upcoming transition if it has not started (so new instructions apply immediately). */
     fun replanIfNotStarted(keepTrack: Boolean = false) {
@@ -257,7 +317,13 @@ class DjBrain(
                     }
                 }
                 if (nextId == null) {
-                    val best = ranked.firstOrNull() ?: run { performer.setActivity("No compatible analysed track to play next"); return@launch }
+                    val realLocal = ranked.filter { library.get(it.trackId)?.track?.artist != DEMO_ARTIST }
+                    if (realLocal.isEmpty() || (aiEnabled.value && preferOnline())) {
+                        autoPickOnline(cur.track.track, cur.analysis.bpm)?.let { nextId = it.track.id; reason = "AI pick from ${it.track.source.name.lowercase().replace('_', ' ')}: ${it.track.genres.take(2).joinToString()}" }
+                    }
+                }
+                if (nextId == null) {
+                    val best = ranked.firstOrNull() ?: run { performer.setActivity("Nothing playable to mix next – search and queue some songs"); return@launch }
                     nextId = best.trackId
                     reason = best.reasons.joinToString(", ").ifBlank { "best overall match" }
                 }
@@ -299,6 +365,9 @@ class DjBrain(
     private suspend fun ensurePlayableMusic() {
         fun ready() = library.tracks.value.count { it.analysis != null }
         if (ready() >= 2) return
+        // Queued songs or an online catalogue are enough: they're analysed as they're loaded.
+        if (manualQueue.value.isNotEmpty() || player?.current?.track?.djDecodable == true) return
+        if (preferOnline()) return
         if (library.tracks.value.none { it.analysisError == null && it.track.capabilities.analysis && it.analysis == null } ) {
             performer.setActivity("No music yet – creating demo tracks…")
             library.addDemoTracks()
@@ -314,6 +383,60 @@ class DjBrain(
             library.tracks.value.filter { it.analysis == null && it.track.artist == "AI DJ Demo" }.forEach { analysis.analyseNow(it.track.id) } }
     }
 
+    private fun preferOnline(): Boolean = catalog != null && claude?.isOnline() == true
+
+    /**
+     * The queue is empty: pick a mixable track from the online catalogue that fits the mode, the current
+     * tempo/key (provider hints) and the user's taste, and add it to the shared queue as an "AI DJ" pick.
+     */
+    private fun autoPickOnline(current: com.aidj.core.model.Track?, currentBpm: Double?): LibraryTrack? {
+        val cat = catalog ?: return null
+        val s = settings.current
+        val steer = steering.value.genres.firstOrNull()
+        val categoryId = when {
+            steer != null -> null
+            s.mode == PartyMode.PUNJABI -> "punjabi"
+            s.mode == PartyMode.BOLLYWOOD -> "bollywood"
+            s.mode == PartyMode.CLUB -> "house"
+            s.mode == PartyMode.FESTIVAL -> "edm"
+            s.mode == PartyMode.CHILL -> "chill"
+            s.mode == PartyMode.CUSTOM && s.customGenres.isNotEmpty() -> null
+            else -> null
+        }
+        val query = steer ?: s.customGenres.firstOrNull()?.takeIf { s.mode == PartyMode.CUSTOM }
+            ?: current?.genres?.firstOrNull { it.length > 2 }
+        val mixable = setOf(com.aidj.core.model.SourceType.AUDIUS, com.aidj.core.model.SourceType.JAMENDO, com.aidj.core.model.SourceType.INTERNET_ARCHIVE)
+        val result = try {
+            when {
+                categoryId != null -> cat.trending(com.aidj.core.providers.Categories.byId(categoryId), 25, mixable)
+                query != null -> cat.search(query, 25, mixable)
+                else -> cat.trending(null, 25, mixable)
+            }
+        } catch (e: Exception) { android.util.Log.w("DjBrain", "online pick failed", e); return null }
+        if (result.tracks.isEmpty()) {
+            if (result.errors.isNotEmpty()) performer.setActivity("Online catalogue unavailable: ${result.errors.values.first()}")
+            return null
+        }
+        val played = history.toSet() + listOfNotNull(current?.id)
+        val tasteTop = taste?.topArtists(20)?.map { it.first }?.toSet().orEmpty()
+        val curKey = current?.let { library.get(it.id)?.analysis?.key }
+        val best = result.tracks.asSequence()
+            .filter { it.djDecodable && it.id !in played && it.durationMs in 90_000..480_000 }
+            .filter { s.allowExplicit || !it.explicit }
+            .maxByOrNull { t ->
+                var sc = 0.0
+                if (currentBpm != null && t.bpmHint != null) sc += com.aidj.core.selection.Harmonic.tempoScore(currentBpm, t.bpmHint!!) * 0.4
+                val k = t.keyHint?.let { com.aidj.core.model.MusicalKey.parse(it) }
+                if (curKey != null && k != null) sc += com.aidj.core.selection.Harmonic.camelotScore(curKey, k) * 0.3
+                if (com.aidj.app.data.TasteStore.normalize(t.artist) in tasteTop) sc += 0.3
+                if (t.capabilities.processing) sc += 0.15 // mixable with tempo sync & effects
+                sc + Math.random() * 0.05
+            } ?: return null
+        library.remember(best)
+        scope.launch(Dispatchers.Main) { player?.addToQueue(best, "AI DJ") }
+        return library.get(best.id)
+    }
+
     private fun setContext() = SetContext(
         current = performer.current?.track, history = history.toList(), historyArtists = historyArtists.toList(),
         minutesPlayed = minutesPlayed(), allowKeyShift = settings.current.keyMatching,
@@ -321,7 +444,14 @@ class DjBrain(
     )
 
     private fun pickFirst(): LibraryTrack? {
-        manualQueue.value.firstOrNull()?.let { id -> manualQueue.value = manualQueue.value.drop(1); library.get(id)?.takeIf { it.analysis != null }?.let { return it } }
+        // The current/next queue item the user chose comes first (analysed on load if needed).
+        player?.let { hub ->
+            val cur = hub.current?.takeIf { it.track.djDecodable && it.error == null }
+            val first = cur ?: hub.upcoming().firstOrNull { it.track.djDecodable && it.error == null }
+            first?.let { library.remember(it.track); return library.get(it.track.id) }
+        }
+        manualQueue.value.firstOrNull()?.let { id -> manualQueue.value = manualQueue.value.drop(1); library.get(id)?.takeIf { it.track.djDecodable }?.let { return it } }
+        if (preferOnline()) autoPickOnline(null, null)?.let { return it }
         val profile = settings.current.mode.profile(settings.current.customGenres)
         val ranked = selector.rank(library.tracks.value, setContext(), profile,
             steering.value.copy(energyTarget = steering.value.energyTarget ?: (profile.baseEnergy - 0.1f), allowExplicit = settings.current.allowExplicit))
@@ -343,6 +473,7 @@ class DjBrain(
     private fun onEvent(e: DjEvent) {
         when (e) {
             is DjEvent.TrackChanged -> {
+                scope.launch(Dispatchers.Main) { player?.djNowPlaying(e.track.track) }
                 val id = e.track.track.id
                 if (history.lastOrNull() != id) {
                     history += id; historyArtists += e.track.track.artist

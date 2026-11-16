@@ -9,8 +9,23 @@ enum class SourceType {
     LOCAL_FILE,
     /** Creative-Commons track downloaded from Jamendo (license recorded per track). */
     JAMENDO,
-    /** Audio item downloaded from the Internet Archive (license recorded per item). */
+    /** Audio item from the Internet Archive (license recorded per item). */
     INTERNET_ARCHIVE,
+    /** Track streamed from Audius (official public API; licence recorded per track). */
+    AUDIUS,
+    /** YouTube video: search via YouTube Data API, playback only through YouTube's official embedded player. */
+    YOUTUBE,
+}
+
+/** How a track's audio reaches the speaker. */
+@Serializable
+enum class PlaybackType {
+    /** A file on the device. */
+    LOCAL_FILE,
+    /** An authorised HTTP(S) audio stream the app's players may decode (ExoPlayer, and the DJ engine if licensed). */
+    DIRECT_STREAM,
+    /** Plays only inside the provider's official embedded player (YouTube): foreground only, never decoded or mixed. */
+    EMBEDDED_PLAYER,
 }
 
 /**
@@ -74,6 +89,30 @@ data class SourceCapabilities(
             }
         }
 
+        /**
+         * Audius per-track licence strings ("All rights reserved", "Attribution CC BY", "Attribution-NoDerivatives CC BY-ND", …).
+         * Audius' API permits third-party apps to stream tracks. All-rights-reserved tracks are played as published:
+         * no tempo/pitch change, effects or remix layers (the DJ still crossfades between them at native tempo).
+         */
+        fun fromAudiusLicense(license: String?): SourceCapabilities {
+            val l = license?.lowercase().orEmpty()
+            val cc = "cc" in l || "creative commons" in l || "attribution" in l
+            val noDerivs = "noderiv" in l || "no deriv" in l || "-nd" in l || " nd" in l
+            return when {
+                "public domain" in l || "cc0" in l -> SourceCapabilities(true, true, true, true, false, "Audius stream · public domain")
+                cc && !noDerivs -> SourceCapabilities(true, true, true, true, false, "Audius stream · ${license} (mixing & remixing allowed)")
+                else -> SourceCapabilities(
+                    playback = true, analysis = true, processing = false, remix = false, offline = false,
+                    note = "Audius stream · ${license ?: "all rights reserved"}: played as published (crossfades, no tempo/FX/remix)",
+                )
+            }
+        }
+
+        val YOUTUBE_EMBED = SourceCapabilities(
+            playback = true, analysis = false, processing = false, remix = false, offline = false,
+            note = "YouTube: plays in YouTube's official player while the app is open; can't be mixed, analysed or played in the background",
+        )
+
         fun licenseShortName(url: String): String {
             val u = url.lowercase()
             if ("publicdomain" in u) return "Public Domain"
@@ -103,6 +142,17 @@ data class Track(
     val artworkUrl: String? = null,
     val explicit: Boolean = false,
     val language: String? = null,
+    val playback: PlaybackType = PlaybackType.LOCAL_FILE,
+    /** Provider-supplied BPM / key (used for ranking before local analysis runs). */
+    val bpmHint: Double? = null,
+    val keyHint: String? = null,
+    /** The provider's own id (Audius track id, YouTube video id, …). */
+    val providerTrackId: String? = null,
 ) {
+    val isStream: Boolean get() = playback == PlaybackType.DIRECT_STREAM
+    val isEmbedded: Boolean get() = playback == PlaybackType.EMBEDDED_PLAYER
+    /** Whether the custom DJ engine can decode it (embedded players are opaque by design). */
+    val djDecodable: Boolean get() = playback != PlaybackType.EMBEDDED_PLAYER && capabilities.playback
+
     val displayName: String get() = if (artist.isBlank()) title else "$artist – $title"
 }

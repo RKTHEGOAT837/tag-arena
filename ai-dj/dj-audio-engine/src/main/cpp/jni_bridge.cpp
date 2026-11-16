@@ -161,7 +161,9 @@ JNIEXPORT jlong JNICALL Java_com_aidj_engine_NativeEngine_nativeCommand(JNIEnv*,
                                                                     jdouble d0, jdouble d1, jdouble d2, jdouble d3) {
     if (type == C_LOAD) return -1;  // must go through nativeLoad
     Command c; c.type = type; c.deck = deck; c.i0 = i0; c.i1 = i1; c.d0 = d0; c.d1 = d1; c.d2 = d2; c.d3 = d3;
-    return (jlong)H(h)->engine.push(c);
+    uint64_t seq = H(h)->engine.push(c);
+    if (seq == 0) LOGE("Command queue full (type %d) – is the audio stream running? (running=%d)", type, (int)H(h)->running());
+    return (jlong)seq;
 }
 
 JNIEXPORT void JNICALL Java_com_aidj_engine_NativeEngine_nativeReadState(JNIEnv* env, jclass, jlong h, jdoubleArray out) {

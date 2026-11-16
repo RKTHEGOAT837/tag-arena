@@ -10,16 +10,71 @@ lock, phase-locks beats to a master clock and executes beat-scheduled automation
 Claude is the high-level brain (through a small backend that holds the API key); without it, a local AI
 makes every decision and the party keeps going offline.
 
-> **Status, honestly:** the analysis, audio engine, transition planning, AI tool layer and backend are
-> implemented **and covered by automated tests** (including executing real plans in the real engine).
-> The Android app compiles and packages into an installable APK, **but this build environment has no
-> Android device or emulator, so the app has not been run on hardware yet.** See the
-> [feature checklist](#feature-checklist) for exactly what is verified and how.
+> **Status, honestly (v1.1):** the app is now a full music player first and a DJ second. You can search
+> real songs inside the app (Audius, YouTube, Jamendo, Internet Archive, your own files), queue them and
+> play them without downloading anything. Playback runs on Media3 ExoPlayer, completely separate from the
+> DJ engine. Provider search, streaming, decoding, analysis and real-song DJ transitions are verified by
+> automated tests against the live services. **This build environment has no Android device or emulator,
+> so nothing here has been listened to on a phone yet** — see [Verification status](#verification-status).
 
----
+## What changed in 1.1 (and why "nothing played")
+
+Root causes found in 1.0.x:
+1. **No in-app way to get music.** Songs had to be imported/downloaded first; otherwise only generated demo
+   tracks existed. → New provider system with real streaming search (no downloads).
+2. **All audio depended on the custom DJ engine**, so any engine problem meant silence. → Normal playback
+   now uses Media3 ExoPlayer; the DJ engine is a separate mode that can't block it.
+3. **Silent failure paths in the DJ engine:** the result of starting the audio output was ignored (no retry,
+   no message); commands to a stopped engine were dropped once its queue filled; refused audio focus made
+   START PARTY do nothing; a failed route change left the output closed. → Retries with backoff, a watchdog
+   that reopens the stream, visible errors on the AI DJ screen, logged queue overflows, explicit focus message.
+4. Settings → **Sound check** now plays a tone through both audio paths on your phone and reports which works
+   (and whether media volume is muted).
+
+## Music sources
+
+| Provider | Search | Plays in app | DJ can mix | Setup |
+|---|---|---|---|---|
+| **Audius** | ✅ songs, artists, genres, trending | ✅ full-length 320 kbps streams | ✅ (licence-aware, see below) | none |
+| **Internet Archive** | ✅ CC / public-domain audio | ✅ streams | ✅ | none |
+| **YouTube** | ✅ via YouTube Data API v3 | ✅ YouTube's official embedded player, foreground only | ❌ (YouTube forbids it) | your own free API key (AIza…) |
+| **Jamendo** | ✅ Creative Commons catalogue | ✅ streams | ✅ | free client id (or backend) |
+| **Your files** | ✅ | ✅ | ✅ | none |
+| Spotify | ❌ | ❌ | ❌ | Not possible: Spotify doesn't let third-party apps play its audio (only its own app/Premium SDK). Used for **taste** only. |
+| SoundCloud | ❌ | ❌ | ❌ | SoundCloud isn't accepting new API apps; nothing to integrate against. |
+| Pixabay Music / Free Music Archive | ❌ | ❌ | ❌ | No public music API (Pixabay's API covers images/video; FMA's API was shut down). |
+
+Licensing in the DJ: Audius tracks marked "All rights reserved" are played as published — the DJ crossfades
+or cuts between them at their own tempo but applies no tempo change, effects or remix layers. Creative Commons
+tracks without "No Derivatives" (and your own files) get the full treatment: beatmatching, key matching, EQ,
+filters, echo, loops, drum layers. YouTube videos are never decoded or mixed.
+
+Coverage, honestly: mainstream Bollywood / Punjabi film releases are mostly on YouTube (needs your key);
+Audius has a lot of Punjabi, bhangra, Bollywood mashups/covers, Hindi, Gujarati and phonk uploads, but not
+every chart hit.
+
+## Verification status
+
+What was actually executed, and what wasn't:
+
+| Your test | What was done | Result |
+|---|---|---|
+| 1. Basic playback | Live search returned real songs; their streams returned HTTP 206 `audio/mpeg` (seekable) and decoded to real audio (non-silent); ExoPlayer uses the same OkHttp stack | ✅ pipeline · ❌ **not heard on a phone** |
+| 2. Queue auto-advance | Implemented (ExoPlayer gapless preload + queue model) | ❌ not run on a device |
+| 3. Search by title / artist / genre | Live: "sidhu moose wala", "arijit singh", "punjabi", "bollywood", "phonk", "gujarati", genre trending | ✅ real results |
+| 4. Background playback | Implemented (Media3 session service, notification, lock screen, BT/headset) | ❌ not run on a device |
+| 5. Network interruption | Implemented (retry policy, wait-for-network + resume) | ❌ not run on a device |
+| 6. AI DJ | Two real bhangra songs streamed from Audius, analysed (134 / 138 BPM vs Audius 133.9 / 137.1), 4 transition plans executed in the real engine: incoming entered within 0.009 beats, phase-locked within 0.013 beats, tempo glided to 138 | ✅ on host · ❌ not on a device |
+| 7. Error handling | Provider failures are reported per provider (tested); YouTube error codes mapped; failed tracks recorded with reasons | ✅ partly · ❌ not on a device |
+| YouTube embed | The app's exact embed HTML loaded in headless Chromium: played (state 1, clock advancing), paused on command, no errors | ✅ in Chromium |
+| Tempo detection on real music | 29 real songs: 25/29 exact with provider hints; the other 4 are cases where Audius' BPM disagrees with both librosa and us | ✅ measured |
+| Key detection on real music | Often differs from Audius' key on real mixes; low-confidence estimates now defer to provider keys | ⚠ weak spot |
 
 ## Contents
 
+- [What changed in 1.1](#what-changed-in-11-and-why-nothing-played)
+- [Music sources](#music-sources)
+- [Verification status](#verification-status)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Claude + backend setup](#claude--backend-setup)
@@ -59,8 +114,8 @@ lives on the device rather than on a server, which is fine for a personal phone.
 
 ## Install
 
-`release/AI-DJ-1.0.5.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.0.5.apk.sha256`.
+`release/AI-DJ-1.1.0.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.1.0.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).

@@ -43,6 +43,18 @@ object Diagnostics {
             }
         }.onFailure { line("engine state failed: $it") }
 
+        section("Player")
+        runCatching {
+            val now = g.player.now.value
+            line("engine: ${now.engine}, playing: ${now.isPlaying}, buffering: ${now.isBuffering}, pos ${now.positionMs}/${now.durationMs} ms, waitingForNetwork: ${now.waitingForNetwork}")
+            line("current: ${now.item?.track?.displayName ?: "-"} [${now.item?.track?.source}] ${now.item?.track?.uri?.take(120) ?: ""}")
+            line("queue: ${g.player.queue.value.size} items, index ${g.player.index.value}")
+            line("DJ engine error: ${g.performer.engineError.value ?: "none"}")
+            line("providers: " + g.catalog.providers.joinToString { "${it.name}=${if (it.isConfigured()) "on" else "off"}" })
+            line("recent playback errors:")
+            g.library.recentPlayErrors(15).forEach { line("  $it") }
+        }.onFailure { line("player state failed: $it") }
+
         section("Performance")
         runCatching {
             val live = g.performer.live.value

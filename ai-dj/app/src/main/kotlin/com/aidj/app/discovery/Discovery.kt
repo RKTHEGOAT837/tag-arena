@@ -66,7 +66,7 @@ class Discovery(private val context: Context, private val settings: SettingsStor
         when (source) {
             SourceType.JAMENDO -> jamendo(query, limit)
             SourceType.INTERNET_ARCHIVE -> archive(query, limit)
-            SourceType.LOCAL_FILE -> emptyList()
+            else -> emptyList()
         }
     }
 

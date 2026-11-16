@@ -30,6 +30,13 @@ class AppGraph(context: Context) {
     val spotify = com.aidj.app.discovery.SpotifyTaste(context, settings, taste)
     val analysis = AnalysisQueue(context, library)
     val discovery = Discovery(context, settings, library)
+    val player = com.aidj.app.playback.PlayerHub(context, library)
+    val catalog = com.aidj.core.providers.MusicCatalog(listOf(
+        com.aidj.core.providers.AudiusProvider(player.http),
+        com.aidj.core.providers.YouTubeProvider(player.http) { settings.youtubeApiKey },
+        com.aidj.core.providers.JamendoProvider(player.http, { settings.jamendoClientId }, { settings.current.backendUrl }, { settings.backendToken }),
+        com.aidj.core.providers.InternetArchiveProvider(player.http),
+    ))
     val engine = NativeEngine()
     val performer = Performer(context, engine, analysis, settings, scope)
     val brain = DjBrain(scope, performer, library, analysis, settings)
@@ -40,6 +47,10 @@ class AppGraph(context: Context) {
     val mcp = McpServer(claude, { settings.mcpToken }, BuildConfig.VERSION_NAME)
 
     init {
+        brain.player = player
+        brain.catalog = catalog
+        claude.catalog = catalog
+        claude.player = player
         brain.taste = taste
         claude.taste = taste
         brain.claude = claude
@@ -68,7 +79,9 @@ class AppGraph(context: Context) {
     companion object {
         @Volatile private var instance: AppGraph? = null
         fun get(): AppGraph = instance ?: error("AppGraph not initialised")
-        internal fun init(context: Context) { if (instance == null) instance = AppGraph(context) }
+        lateinit var appContext: Context
+            private set
+        internal fun init(context: Context) { appContext = context.applicationContext; if (instance == null) instance = AppGraph(context) }
     }
 }
 

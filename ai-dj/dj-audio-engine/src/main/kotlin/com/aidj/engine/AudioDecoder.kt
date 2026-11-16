@@ -33,9 +33,10 @@ class AudioDecoder(private val context: Context) {
     ): Result {
         val extractor = MediaExtractor()
         try {
-            extractor.setDataSource(context, uri, null)
+            val headers = if (uri.scheme == "http" || uri.scheme == "https") mapOf("User-Agent" to "AIDJ/1.1 (Android)") else null
+            extractor.setDataSource(context, uri, headers)
         } catch (e: Exception) {
-            throw DecodeException("Cannot open audio: ${e.message}", e)
+            throw DecodeException(if (uri.scheme?.startsWith("http") == true) "Couldn't open the stream (network or source problem): ${e.message}" else "Cannot open audio: ${e.message}", e)
         }
         try {
             if (extractor.drmInitData != null) throw DecodeException("This file is DRM-protected and cannot be played or processed")

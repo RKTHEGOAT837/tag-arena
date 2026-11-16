@@ -127,6 +127,23 @@ fun SettingsScreen(onBack: () -> Unit, onLibrary: () -> Unit) {
             Text("Graphics quality (Auto lowers it if frames drop; battery saver forces Low)", color = Neon.Dim, fontSize = 12.sp)
             Choice(GraphicsQuality.entries, s.graphics, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { v -> upd { it.copy(graphics = v) } }
 
+            SectionTitle("Music providers")
+            var ytKey by remember { mutableStateOf(g.settings.youtubeApiKey) }
+            Text("Audius and Internet Archive work with no setup. YouTube needs your own free YouTube Data API v3 key: console.cloud.google.com → APIs & Services → enable “YouTube Data API v3” → Credentials → Create API key (starts with AIza). Your Gemini key won't work for this. Jamendo needs a free client id from devportal.jamendo.com.",
+                color = Neon.Dim, fontSize = 12.sp)
+            OutlinedTextField(ytKey, { ytKey = it; g.settings.youtubeApiKey = it }, label = { Text("YouTube Data API key") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            for (p in g.catalog.providers) Text("${p.name}: " + if (p.isConfigured()) "on" else "off – ${p.setupHint}", color = if (p.isConfigured()) Neon.Lime else Neon.Dim, fontSize = 12.sp)
+
+            SectionTitle("Sound check")
+            var selfTest by remember { mutableStateOf<String?>(null) }
+            Text("If you hear nothing, this plays a short tone through each audio path and tells you which one works on this phone.", color = Neon.Dim, fontSize = 12.sp)
+            OutlinedButton(onClick = {
+                selfTest = "Testing… (listen for two beeps)"
+                scope.launch { selfTest = com.aidj.app.data.SoundCheck.run(ctx) }
+            }) { Text("Run sound check", color = Neon.Cyan) }
+            selfTest?.let { Text(it, color = Neon.Text, fontSize = 12.sp) }
+
             SectionTitle("Your music taste (steers song selection)")
             val taste = g.taste
             val spotify by g.spotify.state.collectAsState()

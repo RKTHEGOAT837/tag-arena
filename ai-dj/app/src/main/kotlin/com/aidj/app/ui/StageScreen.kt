@@ -154,6 +154,7 @@ fun StageScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit, onRequest
                 }
                 Column(Modifier.align(Alignment.TopStart).padding(12.dp)) {
                     NeonChip(live.activity, Neon.Cyan)
+                    g.performer.engineError.collectAsState().value?.let { Text("⚠ $it", color = Neon.Red, fontSize = 11.sp) }
                     if (live.transitionProgress >= 0f) {
                         Spacer(Modifier.height(6.dp))
                         Text("MIXING ${(live.transitionProgress * 100).toInt()}%", color = Neon.Pink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -180,7 +181,7 @@ fun StageScreen(onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit, onRequest
                     }
                     val analysed = g.library.tracks.collectAsState().value.count { it.analysis != null }
                     val total = g.library.tracks.collectAsState().value.size
-                    if (analysed < 2) Text(if (total == 0) "No music yet: START PARTY plays generated demo tracks, or add yours in Library" else "Analysing your library… ($analysed/$total ready)",
+                    if (analysed < 2) Text("The AI DJ mixes your queue first, then streams fitting songs itself (Audius). Offline with no music, it plays generated demo tracks.",
                         color = Neon.Dim, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center).padding(top = 110.dp).clickable { onOpenLibrary() })
                 }
             }

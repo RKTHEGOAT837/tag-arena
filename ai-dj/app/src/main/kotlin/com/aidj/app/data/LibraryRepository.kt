@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 
-private class DbHelper(context: Context) : SQLiteOpenHelper(context, "aidj.db", null, 1) {
+private class DbHelper(context: Context) : SQLiteOpenHelper(context, "aidj.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """CREATE TABLE tracks (
@@ -29,8 +29,17 @@ private class DbHelper(context: Context) : SQLiteOpenHelper(context, "aidj.db", 
                 liked INTEGER NOT NULL DEFAULT 0, last_played INTEGER NOT NULL DEFAULT 0, added_at INTEGER NOT NULL)""",
         )
         db.execSQL("CREATE TABLE history (ts INTEGER NOT NULL, track_id TEXT NOT NULL, session TEXT NOT NULL)")
+        createV2(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) { if (oldVersion < 2) createV2(db) }
+
+    private fun createV2(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS playlist_items (playlist_id INTEGER NOT NULL, pos INTEGER NOT NULL, track_id TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS search_history (q TEXT PRIMARY KEY, ts INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS play_errors (ts INTEGER NOT NULL, track_id TEXT NOT NULL, title TEXT NOT NULL, reason TEXT NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS history_ts ON history(ts)")
+    }
 }
 
 /**
@@ -43,7 +52,7 @@ class LibraryRepository(private val context: Context) {
     private val _tracks = MutableStateFlow<List<LibraryTrack>>(emptyList())
     val tracks: StateFlow<List<LibraryTrack>> = _tracks.asStateFlow()
 
-    init { reload() }
+    init { reload(); reloadPlaylists() }
 
     @Synchronized
     fun reload() {
@@ -246,6 +255,116 @@ class LibraryRepository(private val context: Context) {
     fun historyIds(session: String): List<String> {
         val out = ArrayList<String>()
         db.rawQuery("SELECT track_id FROM history WHERE session = ? ORDER BY ts", arrayOf(session)).use { c -> while (c.moveToNext()) out += c.getString(0) }
+        return out
+    }
+
+    // ------------------------------------------------------------------ catalog tracks, playlists, history
+
+    /** Store a streamed/catalog track so history, favourites, playlists and analysis caching work for it. */
+    @Synchronized
+    fun remember(track: Track) {
+        if (get(track.id) == null) upsert(track)
+    }
+
+    @Synchronized
+    fun recentlyPlayed(limit: Int = 30): List<LibraryTrack> {
+        val ids = LinkedHashSet<String>()
+        db.rawQuery("SELECT track_id FROM history ORDER BY ts DESC LIMIT ?", arrayOf((limit * 3).toString())).use { c -> while (c.moveToNext() && ids.size < limit) ids += c.getString(0) }
+        return ids.mapNotNull { get(it) }
+    }
+
+    @Synchronized
+    fun historyEntries(limit: Int = 200): List<Pair<Long, LibraryTrack>> {
+        val out = ArrayList<Pair<Long, LibraryTrack>>()
+        db.rawQuery("SELECT ts, track_id FROM history ORDER BY ts DESC LIMIT ?", arrayOf(limit.toString())).use { c ->
+            while (c.moveToNext()) get(c.getString(1))?.let { out += c.getLong(0) to it }
+        }
+        return out
+    }
+
+    fun favourites(): List<LibraryTrack> = _tracks.value.filter { it.liked }
+
+    data class Playlist(val id: Long, val name: String, val trackIds: List<String>)
+    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
+
+    @Synchronized
+    fun reloadPlaylists() {
+        val lists = ArrayList<Playlist>()
+        db.rawQuery("SELECT id, name FROM playlists ORDER BY created_at DESC", null).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val items = ArrayList<String>()
+                db.rawQuery("SELECT track_id FROM playlist_items WHERE playlist_id = ? ORDER BY pos", arrayOf(id.toString())).use { i -> while (i.moveToNext()) items += i.getString(0) }
+                lists += Playlist(id, c.getString(1), items)
+            }
+        }
+        _playlists.value = lists
+    }
+
+    @Synchronized
+    fun createPlaylist(name: String, trackIds: List<String> = emptyList()): Long {
+        val id = db.insert("playlists", null, ContentValues().apply { put("name", name.trim().ifBlank { "My playlist" }); put("created_at", System.currentTimeMillis()) })
+        trackIds.forEachIndexed { i, t -> db.insert("playlist_items", null, ContentValues().apply { put("playlist_id", id); put("pos", i); put("track_id", t) }) }
+        reloadPlaylists()
+        return id
+    }
+
+    @Synchronized
+    fun addToPlaylist(playlistId: Long, track: Track) {
+        remember(track)
+        val pos = db.rawQuery("SELECT COALESCE(MAX(pos), -1) + 1 FROM playlist_items WHERE playlist_id = ?", arrayOf(playlistId.toString())).use { it.moveToFirst(); it.getInt(0) }
+        db.insert("playlist_items", null, ContentValues().apply { put("playlist_id", playlistId); put("pos", pos); put("track_id", track.id) })
+        reloadPlaylists()
+    }
+
+    @Synchronized
+    fun removeFromPlaylist(playlistId: Long, index: Int) {
+        val items = _playlists.value.firstOrNull { it.id == playlistId }?.trackIds?.toMutableList() ?: return
+        if (index !in items.indices) return
+        items.removeAt(index)
+        db.delete("playlist_items", "playlist_id = ?", arrayOf(playlistId.toString()))
+        items.forEachIndexed { i, t -> db.insert("playlist_items", null, ContentValues().apply { put("playlist_id", playlistId); put("pos", i); put("track_id", t) }) }
+        reloadPlaylists()
+    }
+
+    @Synchronized
+    fun renamePlaylist(playlistId: Long, name: String) { db.execSQL("UPDATE playlists SET name = ? WHERE id = ?", arrayOf<Any>(name, playlistId)); reloadPlaylists() }
+
+    @Synchronized
+    fun deletePlaylist(playlistId: Long) {
+        db.delete("playlist_items", "playlist_id = ?", arrayOf(playlistId.toString()))
+        db.delete("playlists", "id = ?", arrayOf(playlistId.toString()))
+        reloadPlaylists()
+    }
+
+    @Synchronized
+    fun addSearch(q: String) {
+        val t = q.trim(); if (t.length < 2) return
+        db.execSQL("INSERT OR REPLACE INTO search_history(q, ts) VALUES(?, ?)", arrayOf<Any>(t, System.currentTimeMillis()))
+        db.execSQL("DELETE FROM search_history WHERE q NOT IN (SELECT q FROM search_history ORDER BY ts DESC LIMIT 30)")
+    }
+
+    fun recentSearches(limit: Int = 10): List<String> {
+        val out = ArrayList<String>()
+        db.rawQuery("SELECT q FROM search_history ORDER BY ts DESC LIMIT ?", arrayOf(limit.toString())).use { c -> while (c.moveToNext()) out += c.getString(0) }
+        return out
+    }
+
+    @Synchronized fun clearSearches() { db.delete("search_history", null, null) }
+
+    /** Every failed playback is recorded with its reason (shown in Queue and the diagnostic report). */
+    @Synchronized
+    fun recordPlayError(track: Track, reason: String) {
+        db.insert("play_errors", null, ContentValues().apply { put("ts", System.currentTimeMillis()); put("track_id", track.id); put("title", track.displayName); put("reason", reason) })
+        db.execSQL("DELETE FROM play_errors WHERE ts NOT IN (SELECT ts FROM play_errors ORDER BY ts DESC LIMIT 200)")
+    }
+
+    fun recentPlayErrors(limit: Int = 20): List<String> {
+        val out = ArrayList<String>()
+        db.rawQuery("SELECT ts, title, reason FROM play_errors ORDER BY ts DESC LIMIT ?", arrayOf(limit.toString())).use { c ->
+            while (c.moveToNext()) out += "${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(c.getLong(0)))} ${c.getString(1)}: ${c.getString(2)}"
+        }
         return out
     }
 

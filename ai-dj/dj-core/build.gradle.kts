@@ -12,6 +12,8 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 
 dependencies {
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Music provider clients live in the core so they can be tested live on the JVM.
+    api("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
 }
 
