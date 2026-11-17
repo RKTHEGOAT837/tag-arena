@@ -114,8 +114,8 @@ lives on the device rather than on a server, which is fine for a personal phone.
 
 ## Install
 
-`release/AI-DJ-1.1.0.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
-`release/AI-DJ-1.1.0.apk.sha256`.
+`release/AI-DJ-1.1.1.apk` (arm64-v8a, armeabi-v7a, x86_64; Android 10+). SHA-256 in
+`release/AI-DJ-1.1.1.apk.sha256`.
 
 It is signed with the Android **debug** key so you can sideload it (enable "Install unknown apps").
 For distribution, build with your own keystore (see [Building](#building-from-source)).
